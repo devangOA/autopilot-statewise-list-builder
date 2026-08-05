@@ -162,13 +162,54 @@ export function extractEmails(text, html) {
   return [...found];
 }
 
-export function classifyEmails(emails, siteDomain) {
-  const onDomain = emails.filter((e) => e.split('@')[1] === siteDomain);
-  const pool = onDomain.length ? onDomain : emails;
+// Small clubs legitimately publish a gmail/yahoo address as their contact, so
+// free mail is accepted off-domain. Another *corporate* domain is not: an
+// address like `reporter@usatoday.com` scraped off a syndicated article is
+// someone else's contact, not this facility's.
+export const FREE_MAIL_HOSTS = new Set([
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com',
+  'msn.com', 'live.com', 'comcast.net', 'verizon.net', 'me.com', 'mac.com',
+  'protonmail.com', 'proton.me', 'gmx.com', 'mail.com', 'optonline.net',
+  'sbcglobal.net', 'roadrunner.com', 'rochester.rr.com', 'twc.com', 'earthlink.net',
+]);
+
+// Significant words in a facility's name and host, used to tell "our other
+// domain" from "somebody else's domain".
+function brandTokens(siteDomain, facilityName) {
+  const out = new Set();
+  const add = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter((w) => w.length >= 5 && !['tennis', 'sports', 'court', 'courts', 'clubs', 'center', 'centre'].includes(w))
+      .forEach((w) => out.add(w));
+  add(String(siteDomain).replace(/\.[a-z.]+$/, ''));
+  add(facilityName);
+  return out;
+}
+
+export function classifyEmails(emails, siteDomain, facilityName = '') {
+  const apex = String(siteDomain || '').split('.').slice(-2).join('.');
+  const tokens = brandTokens(siteDomain, facilityName);
+  const belongs = (e) => {
+    const d = e.split('@')[1] || '';
+    if (!d) return false;
+    if (d === siteDomain || d === apex || d.endsWith(`.${apex}`)) return true;
+    if (FREE_MAIL_HOSTS.has(d)) return true;
+    // A club that mails from a second domain of its own ("empireracquet.com"
+    // for a site at "empire-racquet.com") still shares its brand words; an
+    // unrelated newsroom domain shares none.
+    const label = d.replace(/\.[a-z.]+$/, '').replace(/[^a-z]/g, '');
+    return [...tokens].some((t) => label.includes(t));
+  };
+  const pool = emails.filter(belongs);
   const isShared = (e) => SHARED_LOCALPARTS.includes(e.split('@')[0].replace(/[._-]/g, ' '));
+  // Prefer an address on the facility's own domain over a free-mail one.
+  const rank = (e) => (FREE_MAIL_HOSTS.has(e.split('@')[1] || '') ? 1 : 0);
+  const sorted = [...pool].sort((a, b) => rank(a) - rank(b));
   return {
-    shared: pool.find(isShared) || '',
-    direct: pool.filter((e) => !isShared(e)),
+    shared: sorted.find(isShared) || '',
+    direct: sorted.filter((e) => !isShared(e)),
   };
 }
 
@@ -197,8 +238,24 @@ const NOT_A_NAME = new RegExp(
   '\\b(director|manager|owner|founder|president|ceo|coo|cfo|chair|coach|staff|team|' +
     'operations|membership|athletic|tennis|pickleball|squash|racquet|program|general|' +
     'executive|managing|facility|facilities|club|head|assistant|associate|senior|' +
-    'department|office|contact|email|phone|address|hours|home|about|our)\\b',
+    'department|office|contact|email|phone|address|hours|home|about|our|' +
+    // organization / place tokens: "Marlene Meyerson JCC Manhattan" must not
+    // reduce to a person named "Meyerson Manhattan".
+    'jcc|ymca|ywca|center|centre|complex|academy|school|college|university|' +
+    'association|foundation|company|corp|inc|llc|group|holdings|partners|' +
+    'manhattan|brooklyn|queens|bronx|staten|york|island|county|village)\\b',
   'i',
+);
+
+// Capitalized words that begin sentences or UI chrome. Without this, a line
+// like "You Marina O." or "Contact Our Manager" parses as a person.
+const NOT_A_FIRST_NAME = new Set(
+  ('you your we our us the this that these those it its they their there here if when while ' +
+    'please contact book join learn find get new all my his her now today welcome home about ' +
+    'more read view call email sign log search menu skip open close free every each also ' +
+    'whether both either any some most best top great first last next back play players ' +
+    'meet with from into over under before after during since until because so and but or')
+    .split(' '),
 );
 
 /**
@@ -226,6 +283,12 @@ export function extractPeople(text) {
         if (parts.length < 2) continue;
         if (parts.some((p) => p.length > 20)) continue;
         if (NOT_A_NAME.test(name)) continue;
+        if (NOT_A_FIRST_NAME.has(parts[0].toLowerCase())) continue;
+        // A trailing initial ("Marina O.") means the real surname was not
+        // captured; a one-letter surname is never usable for an email guess.
+        const surname = parts[parts.length - 1].replace(/\.$/, '');
+        if (surname.length < 2) continue;
+        if (parts[0].replace(/\.$/, '').length < 2) continue;
         out.push({
           first: parts[0],
           last: parts[parts.length - 1],
@@ -326,6 +389,21 @@ export function looksMonetized(text) {
   return MONETIZED_RE.test(String(text || ''));
 }
 
+// Storefronts that rank for court-sport queries (apparel brands, equipment
+// retailers, lesson marketplaces) mention the sports but operate no courts.
+// A facility with a small pro shop trips one or two of these; requiring three
+// distinct cart signals keeps those facilities in.
+const RETAIL_SIGNALS = [
+  /\badd to cart\b/i, /\bfree shipping\b/i, /\bsize (chart|guide)\b/i,
+  /\bshop now\b/i, /\byour cart\b/i, /\bsold out\b/i, /\bcheckout\b/i,
+  /\bshopping bag\b/i, /\bshipping (and|&) returns\b/i, /\breturns? policy\b/i,
+];
+
+export function looksRetail(text) {
+  const t = String(text || '');
+  return RETAIL_SIGNALS.filter((r) => r.test(t)).length >= 3;
+}
+
 const TYPE_RULES = [
   [/\bsportsplex\b/i, 'Sportsplex'],
   [/\bfield ?house\b/i, 'Fieldhouse'],
@@ -366,27 +444,171 @@ export function guessFacilityType(name, text) {
 // City
 // ---------------------------------------------------------------------------
 
-// Matches "Rochester, NY 14620" / "Rochester, New York" in address blocks.
+// Street-address vocabulary. The old parser took up to four capitalized words
+// before ", NY", which turned "1 Harlem River Dr, Bronx, NY" into
+// "Harlem River Bronx" and "...on Main St, NY" into "Main St".
+const STREET_WORD =
+  /\b(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|way|pkwy|parkway|hwy|highway|route|rte|rt|pl|place|ct|court|ter|terrace|cir|circle|sq|square|tpke|turnpike|ext|suite|ste|floor|fl|unit|apt|box|po)\b\.?/i;
+
+// Known New York places, used to pick the right token run out of an address
+// line. Seeded from the discovery markets plus the boroughs and other common
+// municipalities that show up in facility addresses.
+const NY_PLACES = new Set(
+  ('new york,manhattan,brooklyn,queens,bronx,staten island,yonkers,new rochelle,white plains,' +
+    'mount vernon,scarsdale,mamaroneck,rye,port chester,ossining,peekskill,tarrytown,elmsford,' +
+    'armonk,mount kisco,bedford,harrison,purchase,larchmont,hartsdale,greenburgh,dobbs ferry,' +
+    'hastings on hudson,irvington,briarcliff manor,croton on hudson,cortlandt manor,yorktown heights,' +
+    'hempstead,garden city,mineola,freeport,long beach,glen cove,great neck,manhasset,syosset,' +
+    'plainview,hicksville,farmingdale,bethpage,massapequa,huntington,melville,commack,smithtown,' +
+    'islandia,hauppauge,bay shore,islip,sayville,patchogue,bohemia,ronkonkoma,holbrook,medford,' +
+    'riverhead,southampton,east hampton,bridgehampton,montauk,port jefferson,stony brook,' +
+    'westbury,new hyde park,port washington,roslyn,jericho,woodbury,oceanside,rockville centre,' +
+    'valley stream,lynbrook,merrick,wantagh,seaford,levittown,east meadow,uniondale,lindenhurst,' +
+    'babylon,west babylon,deer park,brentwood,central islip,shirley,mastic,coram,selden,' +
+    'centereach,setauket,east setauket,northport,kings park,sound beach,rocky point,wading river,' +
+    'poughkeepsie,fishkill,beacon,newburgh,middletown,goshen,monroe,warwick,nyack,nanuet,' +
+    'spring valley,suffern,new city,pearl river,kingston,new paltz,saugerties,hudson,catskill,' +
+    'carmel,brewster,mahopac,wappingers falls,hyde park,rhinebeck,red hook,millbrook,pawling,' +
+    'chester,florida,port jervis,ellenville,liberty,monticello,woodstock,highland,marlboro,' +
+    'albany,schenectady,troy,saratoga springs,clifton park,latham,colonie,guilderland,delmar,' +
+    'malta,glens falls,queensbury,amsterdam,gloversville,hudson falls,ballston spa,mechanicville,' +
+    'cohoes,watervliet,rensselaer,east greenbush,niskayuna,scotia,rotterdam,johnstown,' +
+    'syracuse,liverpool,cicero,baldwinsville,camillus,manlius,fayetteville,auburn,cortland,' +
+    'oswego,fulton,utica,rome,new hartford,herkimer,oneida,hamilton,dewitt,east syracuse,' +
+    'north syracuse,skaneateles,marcellus,clay,whitesboro,ilion,little falls,canastota,' +
+    'binghamton,vestal,endicott,johnson city,ithaca,elmira,corning,horseheads,bath,olean,' +
+    'jamestown,owego,sidney,oneonta,norwich,delhi,walton,hornell,painted post,lansing,' +
+    'rochester,brighton,pittsford,penfield,webster,greece,henrietta,fairport,victor,' +
+    'canandaigua,geneva,newark,batavia,brockport,geneseo,irondequoit,gates,chili,rush,' +
+    'honeoye falls,spencerport,hilton,macedon,farmington,seneca falls,waterloo,avon,' +
+    'buffalo,amherst,cheektowaga,tonawanda,west seneca,orchard park,hamburg,lancaster,' +
+    'clarence,williamsville,niagara falls,lockport,lewiston,dunkirk,fredonia,depew,' +
+    'east aurora,grand island,kenmore,north tonawanda,springville,alden,akron,elma,' +
+    'watertown,plattsburgh,potsdam,canton,massena,ogdensburg,lake placid,saranac lake,' +
+    'malone,gouverneur,carthage,lowville,ticonderoga,glenville,fort drum,clayton')
+    .split(','),
+);
+
+/**
+ * City from an address line ending in ", NY" / ", New York".
+ *
+ * Address lines are noisy ("1 Harlem River Dr, Bronx, NY 10453"), so the run of
+ * words before the state is trimmed from the left until it looks like a place
+ * name, and a run that matches a known New York municipality wins outright.
+ */
 export function detectCity(text) {
   const t = String(text || '').replace(/\s+/g, ' ');
-  const re = /([A-Z][a-zA-Z.'’-]+(?:\s+[A-Z][a-zA-Z.'’-]+){0,3}),\s*(?:NY|New York)\b\s*(\d{5})?/g;
+  const re = /([A-Za-z][A-Za-z.'’\- ]{2,60}?),\s*(?:NY|New York)\b/g;
   const counts = new Map();
+  const known = new Map();
   let m;
   while ((m = re.exec(t)) !== null) {
-    const city = m[1].trim();
-    if (city.length < 3 || city.length > 40) continue;
-    if (/\b(suite|street|road|avenue|drive|floor|box|route)\b/i.test(city)) continue;
+    // Everything after the last comma is the city segment of the address.
+    const seg = m[1].split(',').pop().trim();
+    let parts = seg.split(/\s+/).filter(Boolean);
+    // Drop leading street tokens and anything before them (house number, street
+    // name), leaving the municipality.
+    const lastStreet = parts.map((p) => STREET_WORD.test(p)).lastIndexOf(true);
+    if (lastStreet > -1) parts = parts.slice(lastStreet + 1);
+    if (!parts.length) continue;
+
+    // "Sound Stage Yonkers" and "Harlem River Bronx" are venue names running
+    // into the city, and "Our home is NYC" is prose. Prefer the longest
+    // trailing run that is a real New York place; that alone resolves both.
+    let hit = '';
+    for (let n = Math.min(parts.length, 3); n >= 1; n--) {
+      const tail = parts.slice(parts.length - n).join(' ');
+      if (NY_PLACES.has(normalizeCity(tail).toLowerCase())) {
+        hit = tail;
+        break;
+      }
+    }
+    if (!hit) {
+      // Unrecognized place: accept it only if it already looks like a bare
+      // city name — a short run of capitalized words.
+      while (parts.length && !/^[A-Z][a-zA-Z.'’-]*$/.test(parts[0])) parts.shift();
+      if (!parts.length || parts.length > 3) continue;
+      if (!parts.every((p) => /^[A-Z][a-zA-Z.'’-]*$/.test(p))) continue;
+    }
+    const city = normalizeCity(hit || parts.join(' '));
+    if (city.length < 3 || city.length > 28) continue;
+    if (STREET_WORD.test(city)) continue;
     counts.set(city, (counts.get(city) || 0) + 1);
+    if (NY_PLACES.has(city.toLowerCase())) known.set(city, (known.get(city) || 0) + 1);
   }
-  if (!counts.size) return '';
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const pick = (mp) => [...mp.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  // A recognized municipality beats a merely well-formed token run.
+  return pick(known) || pick(counts);
 }
 
+// Sites write their city as "NYC", "BROOKLYN" or "Brooklyn"; the CSV should not
+// carry three spellings of one place.
+function normalizeCity(s) {
+  const t = String(s || '').replace(/[.'’-]+$/, '').trim();
+  if (/^(nyc|new york city|n\.?y\.?c\.?)$/i.test(t)) return 'New York';
+  // Title-case anything shouted in caps, leave mixed case alone.
+  if (t === t.toUpperCase()) {
+    return t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  }
+  return t;
+}
+
+// <title> segments that name a page rather than the business.
+const GENERIC_TITLE = /^(home|homepage|home page|welcome|index|main|start|untitled|official site|official website|site|page \d+)$/i;
+
+/**
+ * Facility name from page metadata.
+ *
+ * `og:site_name` is the business name by construction, so it is preferred.
+ * Falling back to <title>, the leading segment is usually the name ("Sutton
+ * East Tennis | NYC") but is sometimes a page label ("Home | Sutton East
+ * Tennis"), so generic segments are skipped rather than returned.
+ */
 export function guessTitleFromName(html) {
-  const m = /<title[^>]*>([^<]{2,160})<\/title>/i.exec(String(html || ''));
-  if (!m) return '';
-  // Titles routinely read "Name | City NY" or "Name - Indoor Courts"; keep the
-  // leading segment, and decode entities so "&amp;" does not reach the CSV.
-  const cleaned = decodeEntities(normalizeSeparators(m[1]));
-  return cleaned.split(/\s+[|-]\s+/)[0].trim() || cleaned;
+  const h = String(html || '');
+  const meta = (prop) => {
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']{2,120})["']|` +
+        `<meta[^>]+content=["']([^"']{2,120})["'][^>]*(?:property|name)=["']${prop}["']`,
+      'i',
+    );
+    const m = re.exec(h);
+    return m ? decodeEntities(normalizeSeparators(m[1] || m[2])) : '';
+  };
+
+  const site = meta('og:site_name');
+  if (site && !GENERIC_TITLE.test(site)) return site.trim();
+
+  const raw = /<title[^>]*>([^<]{2,160})<\/title>/i.exec(h)?.[1] || meta('og:title');
+  if (!raw) return '';
+  const cleaned = decodeEntities(normalizeSeparators(raw));
+  const segments = cleaned.split(/\s+[|–—-]\s+/).map((s) => s.trim()).filter(Boolean);
+  // First non-generic segment; a page labelled "Home | Sutton East Tennis"
+  // should not be recorded as a facility called "Home".
+  const named = segments.find((s) => !GENERIC_TITLE.test(s));
+  return (named || segments[0] || cleaned).trim();
+}
+
+// ---------------------------------------------------------------------------
+// New York relevance
+// ---------------------------------------------------------------------------
+
+// New York area codes, used as corroborating location evidence when a site
+// shows a phone number but no postal address.
+const NY_AREA_CODES = /\(?(212|315|332|347|516|518|585|607|631|646|680|716|718|838|845|914|917|929|934)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/;
+
+/**
+ * Evidence that the facility is actually in New York.
+ *
+ * Search engines happily return a Minnesota chain for "indoor courts Buffalo
+ * NY". Without this gate those rows land in a file titled NEW_YORK_..., which
+ * is worse than omitting them.
+ */
+export function detectNyEvidence(text) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  if (/,\s*(?:NY|New York)\b/i.test(t)) return 'address';
+  if (/\bNY\s+1\d{4}\b/.test(t)) return 'zip';
+  if (NY_AREA_CODES.test(t)) return 'phone';
+  if (/\bNew York (?:State|City)\b/i.test(t)) return 'mention';
+  return '';
 }

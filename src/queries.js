@@ -23,6 +23,18 @@ const TEMPLATES = [
   'basketball court rental hourly {m}',
   'private school gymnasium rental {m}',
   'college recreation center court rental {m}',
+  // Second wave. Platform/paddle tennis in particular is a large indoor-adjacent
+  // segment in Westchester and Long Island that the first wave never queried.
+  'platform tennis club {m}',
+  'paddle tennis club {m}',
+  'tennis center {m}',
+  'pickleball center {m}',
+  'sports dome {m}',
+  'swim and tennis club {m}',
+  'volleyball facility rental {m}',
+  'basketball training facility {m}',
+  'indoor soccer and basketball facility {m}',
+  'recreation center court rental {m}',
 ];
 
 // A handful of statewide / directory-style queries that surface multi-facility

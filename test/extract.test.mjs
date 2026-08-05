@@ -9,12 +9,14 @@ import {
   fetchPage, extractEmails, classifyEmails, extractPeople, detectIndoor,
   detectSports, detectCourtCount, looksExcluded, looksMonetized,
   guessFacilityType, detectCity, guessTitleFromName, pickSubpages,
+  looksRetail, detectNyEvidence,
 } from '../src/extract.js';
 import { guessEmails } from '../src/emails.js';
 import { qualify, isKeepable } from '../src/classify.js';
 import { QUALIFICATION } from '../src/schema.js';
 import { toCsv } from '../src/csv.js';
-import { registrableDomain, isNonFacilityHost, isGovHost } from '../src/search.js';
+import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDomain } from '../src/search.js';
+import { finalize, mailDomain, nameKey, looksLikePublisher } from '../src/finalize.js';
 import { proxyConfig, preferHttps } from '../src/browser.js';
 
 const dir = path.join(import.meta.dirname, 'fixtures');
@@ -166,6 +168,178 @@ await check('http upgraded to https', () => {
 await check('csv quotes and neutralizes formulas', () => {
   const out = toCsv([{ A: 'x,y', B: '=CMD()', C: 'he said "hi"' }], ['A', 'B', 'C']);
   assert.equal(out.split('\n')[1], '"x,y",\'=CMD(),"he said ""hi"""');
+});
+
+// ---- search-engine redirect unwrapping -----------------------------------
+await check('bing ck/a redirects decode to the real target', () => {
+  // Bing hrefs are `.../ck/a?...&u=a1<base64url>&ntb=1`. Left wrapped, every
+  // Bing result reads as bing.com and is dropped as a non-facility host, i.e.
+  // Bing contributes nothing to discovery.
+  const target = 'https://www.empireracquet.com/courts?a=1&b=2';
+  const b64 = Buffer.from(target, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const wrapped = `https://www.bing.com/ck/a?!&&p=deadbeef&ptn=3&u=a1${b64}&ntb=1`;
+  assert.equal(unwrapRedirect(wrapped), target);
+  assert.equal(registrableDomain(unwrapRedirect(wrapped)), 'empireracquet.com');
+  assert.ok(!isNonFacilityHost(registrableDomain(unwrapRedirect(wrapped))));
+});
+await check('undecodable and plain urls handled', () => {
+  assert.equal(unwrapRedirect('https://www.bing.com/ck/a?u=a1notbase64!!'), '');
+  assert.equal(unwrapRedirect('https://empireracquet.com/x'), 'https://empireracquet.com/x');
+  assert.equal(unwrapRedirect(''), '');
+  assert.equal(
+    unwrapRedirect('https://duckduckgo.com/l/?uddg=' + encodeURIComponent('https://a.com/b')),
+    'https://a.com/b',
+  );
+});
+
+// ---- location + facility-name hardening ----------------------------------
+await check('city survives a street address', () => {
+  assert.equal(detectCity('Visit us at 1 Harlem River Dr, Bronx, NY 10453 today.'), 'Bronx');
+  assert.equal(detectCity('Our club on Main St, NY is open.'), '');
+  assert.equal(detectCity('1234 Monroe Ave, Rochester, NY 14618'), 'Rochester');
+});
+await check('known NY municipality beats a stray token run', () => {
+  const t = 'Serving Greater Metro, NY area. Address: 5 Elm St, Pittsford, NY 14534. Greater Metro, NY.';
+  assert.equal(detectCity(t), 'Pittsford');
+  // A venue name running into the city keeps only the municipality.
+  assert.equal(detectCity('Held at Sound Stage Yonkers, NY 10701'), 'Yonkers');
+});
+await check('city spellings normalized to one form', () => {
+  assert.equal(detectCity('Courts in BROOKLYN, NY 11201'), 'Brooklyn');
+  assert.equal(detectCity('Our home is NYC, NY 10001'), 'New York');
+});
+await check('generic <title> segments are not facility names', () => {
+  assert.equal(guessTitleFromName('<title>Home | Sutton East Tennis</title>'), 'Sutton East Tennis');
+  assert.equal(
+    guessTitleFromName('<meta property="og:site_name" content="Court 16"><title>Welcome</title>'),
+    'Court 16',
+  );
+});
+await check('new york evidence gate', () => {
+  assert.equal(detectNyEvidence('55 Court St, Brooklyn, NY 11201'), 'address');
+  assert.equal(detectNyEvidence('Call us at (585) 555-0134'), 'phone');
+  assert.equal(detectNyEvidence('1234 Lake St, Minneapolis, MN 55408 | (612) 555-0100'), '');
+  // No location evidence disqualifies, so a Minnesota chain cannot land in a
+  // New York deliverable.
+  assert.equal(
+    qualify({ indoor: true, outdoor: false, outdoorOnly: false, excludedBy: '', monetized: true, sports: ['tennis'], nyEvidence: '' }).status,
+    QUALIFICATION.NOT_QUALIFIED,
+  );
+});
+await check('online stores are not facilities', () => {
+  assert.ok(looksRetail('Add to cart. Free shipping over $50. Size chart. Your cart is empty.'));
+  // A facility with a small pro shop trips at most one or two signals.
+  assert.ok(!looksRetail('Book a court. Pro shop: add to cart for restringing.'));
+  assert.equal(
+    qualify({ indoor: true, outdoor: false, outdoorOnly: false, excludedBy: '', monetized: true, sports: ['pickleball'], retail: true, nyEvidence: 'address' }).status,
+    QUALIFICATION.NOT_QUALIFIED,
+  );
+});
+await check('sentence starters and org tokens are not people', () => {
+  assert.deepEqual(extractPeople('You Marina O.\nManager'), []);
+  assert.deepEqual(extractPeople('Marlene Meyerson JCC Manhattan\nCEO'), []);
+  assert.deepEqual(extractPeople('Contact Our Manager'), []);
+  // A real "Name\nTitle" pair still parses.
+  assert.equal(extractPeople('Dana Whitfield\nGeneral Manager')[0].last, 'Whitfield');
+});
+
+// ---- dedup + mail-domain normalization -----------------------------------
+await check('apex domain drops booking/vanity subdomains', () => {
+  assert.equal(apexDomain('https://book.412squash.org/x'), '412squash.org');
+  assert.equal(apexDomain('ir.lifetime.life'), 'lifetime.life');
+  assert.equal(apexDomain('www.empireracquet.com'), 'empireracquet.com');
+  // .edu is exempt: two facilities can share one university apex.
+  assert.equal(apexDomain('drumlins.syracuse.edu'), 'drumlins.syracuse.edu');
+});
+await check('mail domain prefers a published address, never free mail', () => {
+  assert.equal(mailDomain({ 'Shared Facility Email': 'info@empireracquet.com', 'Email Domain': 'book.empireracquet.com' }), 'empireracquet.com');
+  // A gmail contact must not become the base for pattern guessing.
+  assert.equal(mailDomain({ 'Shared Facility Email': 'club@gmail.com', 'Email Domain': 'empireracquet.com' }), 'empireracquet.com');
+  assert.equal(mailDomain({ 'Email Domain': 'gmail.com' }), '');
+});
+await check('guesses are regenerated against the real mail domain', () => {
+  const [row] = finalize([{
+    'Facility Name': 'Empire Racquet', City: 'Rochester', Website: 'https://book.empireracquet.com',
+    'Email Domain': 'book.empireracquet.com', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR,
+    'Decision Maker First Name': 'Dana', 'Decision Maker Last Name': 'Whitfield',
+    'Public Direct Email': '', 'Shared Facility Email': 'info@empireracquet.com', 'Research Notes': 'x',
+  }]);
+  assert.equal(row['Email Domain'], 'empireracquet.com');
+  assert.equal(row['Guessed Email 1'], 'dana@empireracquet.com');
+  assert.equal(row['Guessed Email 4'], 'dwhitfield@empireracquet.com');
+  assert.match(row['Research Notes'], /UNVERIFIED/);
+});
+await check('no guesses when a direct address is published', () => {
+  const [row] = finalize([{
+    'Facility Name': 'Empire Racquet', Website: 'https://empireracquet.com', 'Email Domain': 'empireracquet.com',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR,
+    'Decision Maker First Name': 'Dana', 'Decision Maker Last Name': 'Whitfield',
+    'Public Direct Email': 'dwhitfield@empireracquet.com', 'Research Notes': 'x',
+  }]);
+  assert.equal(row['Guessed Email 1'], '');
+  assert.ok(!/UNVERIFIED/.test(row['Research Notes']));
+});
+await check('duplicate facilities collapse to the richer row', () => {
+  const rows = finalize([
+    { 'Facility Name': 'Empire Racquet Club', City: 'Rochester', Website: 'https://book.empireracquet.com',
+      'Email Domain': 'book.empireracquet.com', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Research Notes': '' },
+    { 'Facility Name': 'Empire Racquet Club', City: 'Rochester', Website: 'https://empireracquet.com',
+      'Email Domain': 'empireracquet.com', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR,
+      'Decision Maker First Name': 'Dana', 'Decision Maker Last Name': 'Whitfield',
+      'Public Direct Email': 'dana@empireracquet.com', 'Research Notes': '' },
+    // Same club reached through an unrelated domain.
+    { 'Facility Name': 'The Empire Racquet Club, Inc.', City: 'Rochester', Website: 'https://empire-racquet.net',
+      'Email Domain': 'empire-racquet.net', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Research Notes': '' },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]['Public Direct Email'], 'dana@empireracquet.com');
+  assert.equal(nameKey('The Empire Racquet Club, Inc.'), nameKey('Empire Racquet Club'));
+});
+await check('distinct facilities are not merged', () => {
+  const rows = finalize([
+    { 'Facility Name': 'Sutton East Tennis', City: 'New York', Website: 'https://a.com', 'Email Domain': 'a.com', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Research Notes': '' },
+    { 'Facility Name': 'Vanderbilt Tennis', City: 'New York', Website: 'https://b.com', 'Email Domain': 'b.com', 'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Research Notes': '' },
+  ]);
+  assert.equal(rows.length, 2);
+});
+
+await check('third-party emails are not facility contacts', () => {
+  // A syndicated article leaves a reporter's address on the page.
+  const [row] = finalize([{
+    'Facility Name': 'Some Club', Website: 'https://aolclub.com', 'Email Domain': 'aolclub.com',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR,
+    'Public Direct Email': 'zschermele@usatoday.com', 'Shared Facility Email': 'info@aolclub.com',
+    'Research Notes': '',
+  }]);
+  assert.equal(row['Public Direct Email'], '');
+  assert.equal(row['Shared Facility Email'], 'info@aolclub.com');
+  assert.match(row['Research Notes'], /Third-party email removed/);
+});
+await check('free mail and subdomains are kept as facility contacts', () => {
+  const [row] = finalize([{
+    'Facility Name': 'A-Game Sports', Website: 'https://agame.com', 'Email Domain': 'agame.com',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR,
+    'Public Direct Email': 'nicolegoodrich5@gmail.com', 'Research Notes': '',
+  }]);
+  assert.equal(row['Public Direct Email'], 'nicolegoodrich5@gmail.com');
+});
+await check('publishers are not facilities', () => {
+  assert.ok(looksLikePublisher({ 'Facility Name': '914INC.', 'Email Domain': 'westchestermagazine.com' }));
+  assert.ok(looksLikePublisher({ 'Facility Name': 'AOL.com', 'Email Domain': 'aol.com' }));
+  // Real venues whose names contain publisher-ish words must survive.
+  assert.ok(!looksLikePublisher({ 'Facility Name': 'The Post BK', 'Email Domain': 'thepostbk.com' }));
+  assert.ok(!looksLikePublisher({ 'Facility Name': 'Sportime NY', 'Email Domain': 'sportimeny.com' }));
+});
+await check('on-domain emails outrank free mail', () => {
+  const { shared, direct } = classifyEmails(
+    ['owner@gmail.com', 'dana@empireracquet.test', 'info@empireracquet.test', 'reporter@usatoday.com'],
+    'empireracquet.test',
+  );
+  assert.equal(shared, 'info@empireracquet.test');
+  assert.equal(direct[0], 'dana@empireracquet.test');
+  // Another company's domain is never this facility's contact.
+  assert.ok(!direct.includes('reporter@usatoday.com'));
+  assert.ok(direct.includes('owner@gmail.com'));
 });
 
 await browser.close();

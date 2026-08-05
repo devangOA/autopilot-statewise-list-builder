@@ -12,10 +12,12 @@ import { searchQuery, registrableDomain, isNonFacilityHost, isGovHost } from './
 import {
   fetchPage, pickSubpages, extractEmails, classifyEmails, extractPeople,
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
-  guessFacilityType, detectCity, guessTitleFromName, decodeEntities,
+  looksRetail, detectNyEvidence, guessFacilityType, detectCity,
+  guessTitleFromName, decodeEntities,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
+import { finalize } from './finalize.js';
 import { toCsv } from './csv.js';
 
 // --------------------------------------------------------------------------
@@ -30,8 +32,8 @@ const STATE = arg('state', 'NY');
 const MAX_QUERIES = parseInt(arg('max-queries', '0'), 10);
 const MAX_SITES = parseInt(arg('max-sites', '0'), 10);
 const CONCURRENCY = parseInt(arg('concurrency', '4'), 10);
+const DISCOVERY_CONCURRENCY = parseInt(arg('discovery-concurrency', '4'), 10);
 const CACHE_DIR = arg('cache', '.cache');
-const RESUME = fs.existsSync(path.join(CACHE_DIR, 'sites.json'));
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -41,6 +43,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 // --------------------------------------------------------------------------
 async function discover(browser) {
   const cachePath = path.join(CACHE_DIR, 'sites.json');
+  const donePath = path.join(CACHE_DIR, 'queries-done.json');
   const seed = arg('sites-file', '');
   if (seed) {
     const list = JSON.parse(fs.readFileSync(seed, 'utf8'));
@@ -53,53 +56,82 @@ async function discover(browser) {
     log(`seeded ${Object.keys(sites).length} domains from ${seed}`);
     return sites;
   }
-  if (RESUME) {
-    const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-    log(`resuming discovery cache: ${Object.keys(cached).length} domains`);
-    return cached;
+
+  const all = buildQueries({ markets: NY_MARKETS, limit: MAX_QUERIES });
+
+  // Resume at query granularity, not all-or-nothing: a crash 3000 queries into
+  // a statewide fan-out should not restart discovery from zero.
+  const sites = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : {};
+  const done = new Set(fs.existsSync(donePath) ? JSON.parse(fs.readFileSync(donePath, 'utf8')) : []);
+  const queries = all.filter((q) => !done.has(q));
+  if (done.size) log(`resuming discovery: ${done.size} queries already done, ${Object.keys(sites).length} domains`);
+  log(`discovery: ${queries.length} queries, concurrency=${DISCOVERY_CONCURRENCY}`);
+  if (!queries.length) return sites;
+
+  let next = 0;
+  let completed = 0;
+  let emptyStreak = 0;
+  const flush = () => {
+    fs.writeFileSync(cachePath, JSON.stringify(sites));
+    fs.writeFileSync(donePath, JSON.stringify([...done]));
+  };
+
+  // Each worker starts its engine rotation at a different offset so N workers
+  // spread load across N engines rather than all rate-limiting the same one.
+  async function worker(w) {
+    const { ctx, page } = await newCrawlContext(browser, { blockAssets: true });
+    while (true) {
+      const i = next++;
+      if (i >= queries.length) break;
+      const q = queries[i];
+      let rows = [];
+      let engine = null;
+      let errors = [];
+      try {
+        ({ rows, engine, errors } = await searchQuery(page, q, { offset: w }));
+      } catch (e) {
+        errors = [e.message.split('\n')[0]];
+      }
+      if (!rows.length) {
+        if (++emptyStreak === 10) log('WARNING: 10 empty queries in a row. Sample errors:', errors.join(' | '));
+        if (emptyStreak > 120) {
+          log('ABORT: 120 consecutive empty queries - every engine appears blocked.');
+          break;
+        }
+        // Every engine rate-limits eventually. Back off so the limit can decay
+        // instead of burning the rest of the query list against a wall of 429s.
+        await page.waitForTimeout(Math.min(30000, 1000 * emptyStreak)).catch(() => {});
+        // Deliberately NOT marked done: a query starved by a rate limit has not
+        // been researched, and a resume must retry it rather than skip it.
+        continue;
+      } else {
+        emptyStreak = 0;
+        for (const r of rows) {
+          const domain = registrableDomain(r.url);
+          if (!domain || isNonFacilityHost(domain) || isGovHost(domain)) continue;
+          const s = (sites[domain] ??= { domain, url: `https://${domain}`, titles: [], snippets: [], queries: [] });
+          // Cap the accumulated blurb: a domain matched by 200 queries would
+          // otherwise carry a corpus large enough to skew extraction.
+          if (r.title && s.titles.length < 12) s.titles.push(r.title);
+          if (r.snippet && s.snippets.length < 12) s.snippets.push(r.snippet);
+          if (s.queries.length < 12) s.queries.push(q);
+        }
+      }
+      done.add(q);
+      if (++completed % 50 === 0) {
+        log(`  q${completed}/${queries.length} [${engine || 'none'}] domains=${Object.keys(sites).length}`);
+        flush();
+      }
+      // Politeness jitter, deterministic so runs are reproducible.
+      await page.waitForTimeout(400 + ((i * 2654435761) % 700)).catch(() => {});
+    }
+    await ctx.close();
   }
 
-  const queries = buildQueries({ markets: NY_MARKETS, limit: MAX_QUERIES });
-  log(`discovery: ${queries.length} queries`);
-
-  const sites = {}; // domain -> {domain, url, titles[], snippets[], queries[]}
-  const { ctx, page } = await newCrawlContext(browser, { blockAssets: false });
-  let blocked = 0;
-
-  for (let i = 0; i < queries.length; i++) {
-    const q = queries[i];
-    const { rows, engine, errors } = await searchQuery(page, q);
-    if (!rows.length) {
-      blocked++;
-      if (blocked === 5) {
-        log('WARNING: 5 consecutive query failures. Sample errors:', errors.join(' | '));
-      }
-      if (blocked > 40) {
-        throw new Error(
-          'Search engines unreachable (40+ failures). Run `npm run preflight` - ' +
-            'this environment likely blocks outbound web egress.',
-        );
-      }
-      continue;
-    }
-    blocked = 0;
-    for (const r of rows) {
-      const domain = registrableDomain(r.url);
-      if (!domain || isNonFacilityHost(domain) || isGovHost(domain)) continue;
-      const s = (sites[domain] ??= { domain, url: `https://${domain}`, titles: [], snippets: [], queries: [] });
-      if (r.title) s.titles.push(r.title);
-      if (r.snippet) s.snippets.push(r.snippet);
-      s.queries.push(q);
-    }
-    if (i % 25 === 0) {
-      log(`  q${i + 1}/${queries.length} [${engine}] domains=${Object.keys(sites).length}`);
-      fs.writeFileSync(cachePath, JSON.stringify(sites));
-    }
-    await page.waitForTimeout(500 + Math.floor(600 * ((i * 2654435761) % 1000) / 1000));
-  }
-
-  await ctx.close();
-  fs.writeFileSync(cachePath, JSON.stringify(sites));
+  await Promise.all(
+    Array.from({ length: Math.max(1, DISCOVERY_CONCURRENCY) }, (_, w) => worker(w)),
+  );
+  flush();
   log(`discovery complete: ${Object.keys(sites).length} candidate domains`);
   return sites;
 }
@@ -157,11 +189,21 @@ async function enrichSite(page, site) {
   const sports = detectSports(corpus);
   const excludedBy = looksExcluded(name, corpus);
   const monetized = looksMonetized(corpus);
-  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports });
+  const retail = looksRetail(text);
+  // Location evidence is taken from the pages themselves, never from search
+  // snippets: a snippet says "NY" because the query did.
+  const nyEvidence = detectNyEvidence(text);
+  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence });
 
   const emails = extractEmails(text, html);
-  const { shared, direct } = classifyEmails(emails, site.domain);
-  const people = extractPeople(text);
+  const { shared, direct } = classifyEmails(emails, site.domain, name);
+  // A person whose name is just words lifted out of the facility's own name is
+  // an artifact, not a contact ("Marlene Meyerson JCC Manhattan" -> "Meyerson
+  // Manhattan"). Drop those before picking the best decision maker.
+  const nameWords = new Set(name.toLowerCase().split(/[^a-z]+/).filter(Boolean));
+  const people = extractPeople(text).filter(
+    (p) => !(nameWords.has(p.first.toLowerCase()) && nameWords.has(p.last.toLowerCase())),
+  );
   const person = people[0] || null;
 
   // A direct email whose local part echoes the person's name is the best match.
@@ -181,6 +223,7 @@ async function enrichSite(page, site) {
   const { count, note } = detectCourtCount(corpus);
 
   const notes = [verdict.reason];
+  if (nyEvidence) notes.push(`NY location evidence: ${nyEvidence}.`);
   if (!person) notes.push('No decision maker found on public pages.');
   if (guesses[0]) notes.push(GUESS_DISCLAIMER);
   if (!count) notes.push('No court count stated by a reliable source; left blank.');
@@ -215,13 +258,31 @@ async function enrichSite(page, site) {
 }
 
 async function enrichAll(browser, sites) {
-  let list = Object.values(sites);
+  const attemptedPath = path.join(CACHE_DIR, 'attempted.json');
+  const rowsPath = path.join(CACHE_DIR, 'rows.json');
+
+  // Enrichment resumes like discovery does. A site is "attempted" whether it
+  // qualified, was skipped or failed, so a second discovery wave only crawls
+  // the domains it actually added instead of re-fetching thousands of sites.
+  const attempted = new Set(
+    fs.existsSync(attemptedPath) ? JSON.parse(fs.readFileSync(attemptedPath, 'utf8')) : [],
+  );
+  const rows = fs.existsSync(rowsPath) ? JSON.parse(fs.readFileSync(rowsPath, 'utf8')) : [];
+
+  let list = Object.values(sites).filter((s) => !attempted.has(s.domain));
   if (MAX_SITES > 0) list = list.slice(0, MAX_SITES);
+  if (attempted.size) log(`resuming enrichment: ${attempted.size} sites already done, ${rows.length} rows kept`);
   log(`enrichment: ${list.length} sites, concurrency=${CONCURRENCY}`);
 
-  const rows = [];
   let next = 0;
   let done = 0;
+  const flush = () => {
+    fs.writeFileSync(rowsPath, JSON.stringify(rows));
+    fs.writeFileSync(attemptedPath, JSON.stringify([...attempted]));
+    // A statewide run takes hours; keep a usable deliverable on disk the whole
+    // way through rather than only at the end.
+    fs.writeFileSync(OUT, toCsv(dedupe(rows), COLUMNS));
+  };
 
   async function worker() {
     const { ctx, page } = await newCrawlContext(browser);
@@ -236,46 +297,28 @@ async function enrichAll(browser, sites) {
       } catch (e) {
         log(`  fail ${site.domain}: ${e.message.split('\n')[0]}`);
       }
-      if (++done % 20 === 0) log(`  enriched ${done}/${list.length}, kept ${rows.length}`);
+      // Marked after the attempt regardless of outcome: a site that failed or
+      // was disqualified has been researched and should not be re-crawled.
+      attempted.add(site.domain);
+      if (++done % 20 === 0) {
+        log(`  enriched ${done}/${list.length}, kept ${rows.length}`);
+        flush();
+      }
     }
     await ctx.close();
   }
 
   await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker));
+  flush();
   return rows;
 }
 
 // --------------------------------------------------------------------------
 // Dedup + write
 // --------------------------------------------------------------------------
-function dedupe(rows) {
-  const byDomain = new Map();
-  for (const r of rows) {
-    const k = r['Email Domain'] || registrableDomain(r.Website);
-    const prev = byDomain.get(k);
-    if (!prev) {
-      byDomain.set(k, r);
-      continue;
-    }
-    // Keep the richer record.
-    const score = (x) =>
-      (x['Public Direct Email'] ? 4 : 0) +
-      (x['Shared Facility Email'] ? 2 : 0) +
-      (x['Decision Maker Last Name'] ? 2 : 0) +
-      (x['Number of Courts'] ? 1 : 0);
-    if (score(r) > score(prev)) byDomain.set(k, r);
-  }
-  const order = {
-    [QUALIFICATION.CONFIRMED_INDOOR]: 0,
-    [QUALIFICATION.INDOOR_AND_OUTDOOR]: 1,
-    [QUALIFICATION.NEEDS_REVIEW]: 2,
-  };
-  return [...byDomain.values()].sort(
-    (a, b) =>
-      (order[a['Qualification Status']] ?? 9) - (order[b['Qualification Status']] ?? 9) ||
-      String(a['Facility Name']).localeCompare(String(b['Facility Name'])),
-  );
-}
+// Facility/contact dedup and mail-domain normalization live in finalize.js so
+// they can also be re-applied to a cached run without re-crawling.
+const dedupe = finalize;
 
 // --------------------------------------------------------------------------
 const browser = await launchBrowser();
