@@ -10,6 +10,6 @@
     "test": "CRAWLER_DISABLE_PROXY=1 node test/extract.test.mjs && node test/e2e.test.mjs"
   },
   "dependencies": {
-    "playwright": "^1.56.1"
+    "playwright": "1.56.1"
   }
 }
