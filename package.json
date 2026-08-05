@@ -1,0 +1,15 @@
+{
+  "name": "autopilot-statewise-list-builder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Statewise list builder: discovers indoor sports court facilities and enriches them with decision-maker contacts.",
+  "scripts": {
+    "build:ny": "node src/index.js --state NY --out NEW_YORK_INDOOR_COURT_FACILITIES.csv",
+    "preflight": "node src/preflight.js",
+    "test": "CRAWLER_DISABLE_PROXY=1 node test/extract.test.mjs && node test/e2e.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.56.1"
+  }
+}
