@@ -207,10 +207,42 @@ export function classifyEmails(emails, siteDomain, facilityName = '') {
   // Prefer an address on the facility's own domain over a free-mail one.
   const rank = (e) => (FREE_MAIL_HOSTS.has(e.split('@')[1] || '') ? 1 : 0);
   const sorted = [...pool].sort((a, b) => rank(a) - rank(b));
+  const shared = sorted.filter(isShared);
   return {
-    shared: sorted.find(isShared) || '',
+    // `shared` stays a single string for the one-row-per-facility CSV; the
+    // full lists feed the per-contact verification file, where every reachable
+    // address at a facility is worth having.
+    shared: shared[0] || '',
+    sharedAll: shared,
     direct: sorted.filter((e) => !isShared(e)),
   };
+}
+
+/**
+ * Pair each named person with the published address that is most likely theirs.
+ *
+ * A local part is matched against the person's name rather than the reverse, so
+ * `dwhitfield@`, `dana@` and `dana.whitfield@` all resolve to Dana Whitfield
+ * while `info@` never does. An address is claimed by at most one person.
+ */
+export function matchEmailsToPeople(people, direct) {
+  const taken = new Set();
+  return people.map((p) => {
+    const f = p.first.toLowerCase().replace(/[^a-z]/g, '');
+    const l = p.last.toLowerCase().replace(/[^a-z]/g, '');
+    const hit = direct.find((e) => {
+      if (taken.has(e)) return false;
+      const lp = e.split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
+      if (!lp) return false;
+      return (
+        lp === f + l || lp === l + f || lp === f[0] + l || lp === f + l[0] ||
+        (l.length >= 4 && lp.includes(l)) ||
+        (f.length >= 4 && lp === f)
+      );
+    });
+    if (hit) taken.add(hit);
+    return { ...p, email: hit || '' };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +275,12 @@ const NOT_A_NAME = new RegExp(
     // reduce to a person named "Meyerson Manhattan".
     'jcc|ymca|ywca|center|centre|complex|academy|school|college|university|' +
     'association|foundation|company|corp|inc|llc|group|holdings|partners|' +
-    'manhattan|brooklyn|queens|bronx|staten|york|island|county|village)\\b',
+    'manhattan|brooklyn|queens|bronx|staten|york|island|county|village|' +
+    // Team and programme names read as "Name + Title" on athletics pages:
+    // "Men's Basketball" is a squad, not a decision maker.
+    'basketball|volleyball|football|soccer|hockey|baseball|softball|lacrosse|' +
+    'track|field|swimming|diving|golf|wrestling|rowing|crew|athletics|' +
+    'mens|womens|boys|girls|varsity|junior|senior|freshman)\\b',
   'i',
 );
 
@@ -587,6 +624,44 @@ export function guessTitleFromName(html) {
   // should not be recorded as a facility called "Home".
   const named = segments.find((s) => !GENERIC_TITLE.test(s));
   return (named || segments[0] || cleaned).trim();
+}
+
+/**
+ * Every distinct New York street address on the site.
+ *
+ * An operator with branches publishes one address per location, and collapsing
+ * them to a single row loses real, separately-contactable facilities. A bare
+ * city mention is not enough ("serving Rochester, Pittsford and Webster" is
+ * marketing copy, not three sites), so a full street address is required:
+ * house number, street with a recognized suffix, city, `NY`, and usually a ZIP.
+ */
+const STREET_SUFFIX =
+  '(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pkwy|Parkway|Hwy|Highway|Rte|Route|Pl|Place|Ct|Court|Ter|Terrace|Cir|Circle|Sq|Square|Tpke|Turnpike|Broadway|Concourse)';
+
+export function detectAddresses(text) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  const re = new RegExp(
+    `(\\d{1,6}[A-Za-z]?\\s+[A-Za-z0-9.'\`\\-\\s]{2,40}?${STREET_SUFFIX}\\.?)` + // street
+      `(?:\\s*,?\\s*(?:Suite|Ste|Unit|Bldg|Building|Floor|Fl)\\.?\\s*[\\w-]+)?` + // optional unit
+      `\\s*,\\s*([A-Z][A-Za-z.'\\-]*(?:\\s+[A-Z][A-Za-z.'\\-]*){0,2})` + // city
+      `\\s*,\\s*(?:NY|New York)\\b\\s*(\\d{5})?`, // state + optional zip
+    'g',
+  );
+  const seen = new Map();
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const street = m[1].replace(/\s+/g, ' ').trim();
+    const city = normalizeCity(m[2].trim());
+    const zip = m[3] || '';
+    if (!city || city.length < 3 || city.length > 28) continue;
+    if (STREET_WORD.test(city)) continue;
+    if (street.length > 60) continue;
+    // Key on street+zip so the same branch listed on several pages counts once,
+    // while two branches in one city stay distinct.
+    const key = `${street.toLowerCase()}|${zip}`;
+    if (!seen.has(key)) seen.set(key, { street, city, zip });
+  }
+  return [...seen.values()];
 }
 
 // ---------------------------------------------------------------------------

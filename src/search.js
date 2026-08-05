@@ -193,22 +193,35 @@ export function registrableDomain(urlOrHost) {
 // .net/.us that dominate this data set.
 const MULTI_TLD = new Set(['co.uk', 'org.uk', 'com.au', 'co.nz', 'ny.us', 'k12.ny.us']);
 
+// Subdomains that are a facility's own plumbing rather than a separate
+// business. Only these are stripped.
+const VANITY_SUBDOMAIN = new Set([
+  'www', 'www2', 'book', 'booking', 'bookings', 'reserve', 'reservations',
+  'play', 'portal', 'members', 'member', 'my', 'app', 'apps', 'secure',
+  'shop', 'store', 'ir', 'investors', 'info', 'home', 'web', 'mail', 'email',
+  'go', 'get', 'new', 'old', 'beta', 'staging', 'm', 'mobile', 'club', 'courts',
+]);
+
 /**
- * Registrable domain reduced to its apex, e.g. `book.412squash.org` ->
+ * Host with a vanity subdomain removed, e.g. `book.412squash.org` ->
  * `412squash.org`. Used for the mail domain (a booking subdomain never
  * receives mail) and for facility dedup.
  *
- * `.edu` is deliberately exempt: `drumlins.syracuse.edu` and another
- * `*.syracuse.edu` facility are different facilities, and collapsing them
- * would merge two real rows into one.
+ * This strips a *known* prefix rather than reducing to the registrable apex.
+ * Reducing to the apex merged unrelated businesses that merely share a host:
+ * two different clubs on `squarespace.com`, five on `ezfacility.com`, and
+ * `drumlins.syracuse.edu` with every other facility at that university. Those
+ * are separate facilities and must stay separate rows.
  */
 export function apexDomain(urlOrHost) {
   const h = registrableDomain(urlOrHost);
-  if (!h || h.endsWith('.edu')) return h;
+  if (!h) return h;
   const parts = h.split('.');
-  if (parts.length <= 2) return h;
-  const keep = MULTI_TLD.has(parts.slice(-2).join('.')) ? 3 : 2;
-  return parts.slice(-keep).join('.');
+  const minLabels = MULTI_TLD.has(parts.slice(-2).join('.')) ? 3 : 2;
+  // Peel only leading labels that are known plumbing, never the brand label.
+  let i = 0;
+  while (parts.length - i > minLabels && VANITY_SUBDOMAIN.has(parts[i].toLowerCase())) i++;
+  return parts.slice(i).join('.');
 }
 
 async function runEngine(page, engine, query, { timeout = 30000 } = {}) {

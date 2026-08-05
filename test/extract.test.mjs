@@ -9,7 +9,7 @@ import {
   fetchPage, extractEmails, classifyEmails, extractPeople, detectIndoor,
   detectSports, detectCourtCount, looksExcluded, looksMonetized,
   guessFacilityType, detectCity, guessTitleFromName, pickSubpages,
-  looksRetail, detectNyEvidence,
+  looksRetail, detectNyEvidence, detectAddresses, matchEmailsToPeople,
 } from '../src/extract.js';
 import { guessEmails } from '../src/emails.js';
 import { qualify, isKeepable } from '../src/classify.js';
@@ -17,6 +17,7 @@ import { QUALIFICATION } from '../src/schema.js';
 import { toCsv } from '../src/csv.js';
 import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDomain } from '../src/search.js';
 import { finalize, mailDomain, nameKey, looksLikePublisher } from '../src/finalize.js';
+import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
 import { proxyConfig, preferHttps } from '../src/browser.js';
 
 const dir = path.join(import.meta.dirname, 'fixtures');
@@ -244,12 +245,18 @@ await check('sentence starters and org tokens are not people', () => {
 });
 
 // ---- dedup + mail-domain normalization -----------------------------------
-await check('apex domain drops booking/vanity subdomains', () => {
+await check('apex domain drops vanity subdomains only', () => {
   assert.equal(apexDomain('https://book.412squash.org/x'), '412squash.org');
   assert.equal(apexDomain('ir.lifetime.life'), 'lifetime.life');
   assert.equal(apexDomain('www.empireracquet.com'), 'empireracquet.com');
-  // .edu is exempt: two facilities can share one university apex.
+  // Unrelated businesses that merely share a host must stay separate: these
+  // are different facilities, not one facility reached two ways.
   assert.equal(apexDomain('drumlins.syracuse.edu'), 'drumlins.syracuse.edu');
+  assert.equal(apexDomain('rochesterclub.squarespace.com'), 'rochesterclub.squarespace.com');
+  assert.notEqual(apexDomain('clubA.ezfacility.com'), apexDomain('clubB.ezfacility.com'));
+  // The brand label itself is never peeled, even when it looks like plumbing.
+  assert.equal(apexDomain('shop.com'), 'shop.com');
+  assert.equal(apexDomain('www.play.com'), 'play.com');
 });
 await check('mail domain prefers a published address, never free mail', () => {
   assert.equal(mailDomain({ 'Shared Facility Email': 'info@empireracquet.com', 'Email Domain': 'book.empireracquet.com' }), 'empireracquet.com');
@@ -340,6 +347,87 @@ await check('on-domain emails outrank free mail', () => {
   // Another company's domain is never this facility's contact.
   assert.ok(!direct.includes('reporter@usatoday.com'));
   assert.ok(direct.includes('owner@gmail.com'));
+});
+
+// ---- multi-branch operators + multiple contacts --------------------------
+await check('branch addresses are found, marketing copy is not', () => {
+  const t = 'Syosset: 75 Haskett Drive, Syosset, NY 11791. Kings Park: 275 Old Indian Head Rd, ' +
+            'Kings Park, NY 11754. Also serving Rochester, Pittsford and Webster. ' +
+            'Call the desk at 75 Haskett Drive, Syosset, NY 11791.';
+  const a = detectAddresses(t);
+  // Two real branches; the repeated Syosset listing collapses, and the bare
+  // city mentions are not treated as locations.
+  assert.equal(a.length, 2);
+  assert.deepEqual(a.map((x) => x.city).sort(), ['Kings Park', 'Syosset']);
+  assert.equal(detectAddresses('We serve Rochester, NY and Buffalo, NY players.').length, 0);
+});
+await check('every contactable person is kept, each with their own address', () => {
+  const people = [
+    { first: 'Dana', last: 'Whitfield', title: 'General Manager' },
+    { first: 'Marcus', last: 'Bell', title: 'Director of Operations' },
+    { first: 'Ana', last: 'Reyes', title: 'Membership Director' },
+  ];
+  const matched = matchEmailsToPeople(people, ['dwhitfield@x.com', 'marcus.bell@x.com', 'info@x.com']);
+  assert.equal(matched.length, 3);
+  assert.equal(matched[0].email, 'dwhitfield@x.com');
+  assert.equal(matched[1].email, 'marcus.bell@x.com');
+  // No address matches Ana, so she gets none rather than someone else's.
+  assert.equal(matched[2].email, '');
+});
+await check('an address is claimed by only one person', () => {
+  const m = matchEmailsToPeople(
+    [{ first: 'Dana', last: 'Bell', title: 'Owner' }, { first: 'Marcus', last: 'Bell', title: 'Manager' }],
+    ['bell@x.com'],
+  );
+  assert.equal(m[0].email, 'bell@x.com');
+  assert.equal(m[1].email, '');
+});
+
+// ---- verification-input contact rules ------------------------------------
+await check('honorifics and squad names are not decision makers', () => {
+  // "Dr. Riley" is a title plus a surname; anchoring first@ on it would emit
+  // dr@theirdomain.com and present it as a person's address.
+  assert.ok(!nameIsConfirmed('Dr.', 'Riley'));
+  assert.ok(!nameIsConfirmed('Prof', 'Smith'));
+  // Athletics pages list squads in the same "Name, Title" shape as people.
+  assert.ok(!nameIsConfirmed("Women's", 'Basketball'));
+  assert.ok(!nameIsConfirmed('Community', 'Engagement'));
+  // Real names, including one that merely contains "men", still pass.
+  assert.ok(nameIsConfirmed('Dana', 'Whitfield'));
+  assert.ok(nameIsConfirmed('Roe', 'Hemenway'));
+});
+await check('published addresses are kept and guesses are not invented', () => {
+  const master = {
+    'Email Domain': 'empireracquet.com',
+    'Decision Maker First Name': 'Dana', 'Decision Maker Last Name': 'Whitfield',
+    'Public Direct Email': '', 'Shared Facility Email': 'info@empireracquet.com',
+  };
+  // Two people: one with a published address, one without.
+  const extra = {
+    _people: [
+      { first: 'Dana', last: 'Whitfield', title: 'GM', email: 'dwhitfield@empireracquet.com' },
+      { first: 'Marcus', last: 'Bell', title: 'Ops', email: '' },
+    ],
+    _directEmails: ['dwhitfield@empireracquet.com'],
+    _sharedEmails: ['info@empireracquet.com'],
+  };
+  const c = candidatesFor(master, extra);
+  const types = c.map((x) => x.type);
+  // Dana keeps her published address and gets no guesses; Marcus gets exactly
+  // six; the shared inbox survives alongside both.
+  assert.equal(types.filter((t) => t === 'Published Direct').length, 1);
+  assert.equal(types.filter((t) => t.startsWith('Guessed')).length, 6);
+  assert.equal(types.filter((t) => t === 'Published Shared').length, 1);
+  assert.ok(c.filter((x) => x.type.startsWith('Guessed')).every((x) => x.person.last === 'Bell'));
+});
+await check('a staff roster cannot flood the verification file', () => {
+  // A university athletics page publishes dozens of addresses tied to nobody.
+  const many = Array.from({ length: 40 }, (_, i) => `person${i}@uni.edu`);
+  const c = candidatesFor(
+    { 'Email Domain': 'uni.edu' },
+    { _people: [], _directEmails: many, _sharedEmails: [] },
+  );
+  assert.ok(c.length <= 3, `expected the cap to hold, got ${c.length}`);
 });
 
 await browser.close();

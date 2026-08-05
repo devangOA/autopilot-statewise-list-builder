@@ -13,7 +13,7 @@ import {
   fetchPage, pickSubpages, extractEmails, classifyEmails, extractPeople,
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
   looksRetail, detectNyEvidence, guessFacilityType, detectCity,
-  guessTitleFromName, decodeEntities,
+  guessTitleFromName, decodeEntities, matchEmailsToPeople, detectAddresses,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
@@ -196,7 +196,7 @@ async function enrichSite(page, site) {
   const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence });
 
   const emails = extractEmails(text, html);
-  const { shared, direct } = classifyEmails(emails, site.domain, name);
+  const { shared, sharedAll, direct } = classifyEmails(emails, site.domain, name);
   // A person whose name is just words lifted out of the facility's own name is
   // an artifact, not a contact ("Marlene Meyerson JCC Manhattan" -> "Meyerson
   // Manhattan"). Drop those before picking the best decision maker.
@@ -254,8 +254,26 @@ async function enrichSite(page, site) {
     'Qualification Status': verdict.status,
     'Research Notes': notes.join(' '),
     'Source URLs': [...new Set(sources)].join(' | '),
+
+    // Underscore-prefixed fields are not in COLUMNS, so they never reach the
+    // master CSV -- but they are persisted in the cache, where the per-contact
+    // verification file picks them up. A facility routinely lists several
+    // people worth contacting; keeping only the top-ranked one throws away
+    // reachable decision makers.
+    _people: matchEmailsToPeople(people.slice(0, 8), direct),
+    _directEmails: direct,
+    _sharedEmails: sharedAll,
+    // Branch addresses. An operator with several New York sites is several
+    // contactable facilities, not one.
+    _locations: detectAddresses(text),
   };
 }
+
+// Playwright's wording when the browser or its context is gone, as opposed to
+// a site-specific failure. Used to tell "we were killed" from "this site is
+// broken", which decides whether a domain counts as researched.
+const BROWSER_GONE =
+  /Target (page|closed)|context or browser has been closed|Browser(Context)? has been closed|browser has disconnected|Protocol error|Connection closed|Session closed/i;
 
 async function enrichAll(browser, sites) {
   const attemptedPath = path.join(CACHE_DIR, 'attempted.json');
@@ -295,7 +313,16 @@ async function enrichAll(browser, sites) {
         if (isKeepable(row['Qualification Status'])) rows.push(row);
         else log(`  skip ${site.domain} (${row['Qualification Status']}) - ${row['Research Notes']}`);
       } catch (e) {
-        log(`  fail ${site.domain}: ${e.message.split('\n')[0]}`);
+        const msg = e.message.split('\n')[0];
+        // A dead browser is not a verdict on this site. When the run is killed,
+        // every queued site would otherwise fail instantly and be stamped
+        // "researched", so a resume would skip hundreds of sites it never
+        // visited. Stop the worker and leave them unmarked instead.
+        if (BROWSER_GONE.test(msg)) {
+          log(`  abort ${site.domain}: browser closed - left unmarked for resume`);
+          break;
+        }
+        log(`  fail ${site.domain}: ${msg}`);
       }
       // Marked after the attempt regardless of outcome: a site that failed or
       // was disqualified has been researched and should not be re-crawled.

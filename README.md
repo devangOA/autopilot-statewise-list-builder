@@ -30,6 +30,21 @@ built from 4,967 search queries across ~160 markets, 3,852 candidate domains and
 Coverage spans 305 distinct municipalities from Montauk to Buffalo. Every row
 carries its `Source URLs`; no field is written from model recall.
 
+## Pipeline
+
+```
+npm run build:ny    discover + enrich  -> NEW_YORK_INDOOR_COURT_FACILITIES.csv   (master, 1 row per facility)
+npm run finalize    re-dedup from cache -> rewrites the master, no crawling
+npm run reoon       fan out to contacts -> NY_INDOOR_COURTS_REOON_VERIFICATION_INPUT.csv  (1 row per candidate email)
+                                        -> NY_INDOOR_COURTS_LOCATIONS.csv                 (1 row per branch address)
+                                        -> NY_INDOOR_COURTS_NEEDS_REVIEW.csv              (parked, unclear indoor status)
+```
+
+`reoon` never writes the master. It reads it, plus an optional
+`--contacts <rows.json>` from a second crawl pass that retains every named
+person and every branch address, and joins the two: the master decides *whether*
+a facility qualifies, the contact pass decides *who* to contact there.
+
 ## Running it
 
 ```bash
@@ -160,6 +175,31 @@ already enriched, whatever the outcome) and `rows.json` (kept rows). Deleting
   a CONNECT-only proxy answers plain-HTTP requests with `405` and Chromium does
   not reliably honor a loopback bypass list. `fetchPage()` rejects any non-OK
   document so such an error page is never parsed as facility content.
+
+## Porting to another state
+
+The pipeline is state-agnostic in structure; the New York specifics are
+isolated in a handful of named constants. To build, say, Texas, change these
+and nothing else:
+
+| What | Where | Change |
+| --- | --- | --- |
+| Market list driving query fan-out | `geo.js` → `NY_MARKETS` | Replace with that state's cities/suburbs. Coverage matters more than length: most facility sites only surface for a city-scoped query. |
+| Statewide directory queries | `queries.js` → `STATEWIDE` | Swap the state name. Templates in `TEMPLATES` are sport-specific, not state-specific, and carry over unchanged. |
+| Municipality whitelist for city parsing | `extract.js` → `NY_PLACES` | Replace. Used to pick the real city out of an address line. |
+| Location gate | `extract.js` → `detectNyEvidence`, `NY_AREA_CODES` | Swap the area codes, the `, NY` literal and the `1xxxx` ZIP prefix. |
+| Address parser state literal | `extract.js` → `detectCity`, `detectAddresses` | Both match `(?:NY|New York)`; parameterize or swap. |
+| Government host pattern | `search.js` → `GOV_PATTERNS` | `\.ny\.us` becomes the state's equivalent. |
+| Output filenames | `package.json` scripts, `--out` | Cosmetic. |
+
+`--state TX` already flows through to the `State` column and the `TX-0001`
+facility IDs. Everything else — engine handling, resumability, dedup,
+publisher/retail/marketplace exclusion, the email rules and the whole
+verification-input builder — is generic and needs no change.
+
+Expect one thing to differ per state: **which search engines work**. Engine
+health drifts and is partly geographic. Run `npm run preflight` first and check
+the table above before assuming the current engine set still holds.
 
 ## Tests
 
