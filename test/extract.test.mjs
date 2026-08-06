@@ -19,6 +19,7 @@ import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDo
 import { finalize, mailDomain, nameKey, looksLikePublisher } from '../src/finalize.js';
 import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
 import { validateFallback, RETRIEVAL } from '../src/fallback.js';
+import { N8N_COLUMNS, fitNotes, build as buildN8n } from '../src/n8n.js';
 import { setActiveState, detectStateEvidence } from '../src/extract.js';
 import { stateConfig } from '../src/states.js';
 import { proxyConfig, preferHttps } from '../src/browser.js';
@@ -525,6 +526,87 @@ await check('state config exposes markets, gov patterns and statewide queries', 
   assert.ok(ca.statewide.length >= 10);
   assert.ok(ca.gov.some((r) => r.test('parks.ca.us')));
   assert.throws(() => stateConfig('ZZ'), /Unknown state/);
+});
+
+// ---- n8n output contract --------------------------------------------------
+await check('n8n columns match the reference file exactly, in order', () => {
+  const ref = fs.readFileSync(path.join(import.meta.dirname, '..', 'N8N_INDOOR_COURTS_5_ROW_REFERENCE.csv'), 'utf8');
+  const header = ref.split('\n')[0].replace(/^﻿/, '').split(',').map((c) => c.trim());
+  assert.deepEqual(N8N_COLUMNS, header);
+  assert.equal(N8N_COLUMNS.length, 17);
+});
+await check('n8n rows follow the reference row behaviour', () => {
+  const master = [{
+    'Facility Name': 'Empire Racquet', Website: 'https://empireracquet.com/', City: 'Irvine', State: 'CA',
+    'Facility Type': 'Racquet / Tennis Club', 'Sports Offered': 'tennis; pickleball',
+    'Indoor Court Status': 'Indoor', 'Number of Courts': '8',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Email Domain': 'empireracquet.com',
+    'Source URLs': 'https://empireracquet.com/', 'Research Notes': '',
+    'Decision Maker First Name': 'Dana', 'Decision Maker Last Name': 'Whitfield', 'Decision Maker Title': 'GM',
+    'Public Direct Email': '', 'Shared Facility Email': 'info@empireracquet.com',
+  }];
+  const contacts = new Map([['empireracquet.com', {
+    Website: 'https://empireracquet.com/',
+    _people: [
+      { first: 'Dana', last: 'Whitfield', title: 'General Manager', email: 'dwhitfield@empireracquet.com' },
+      { first: 'Marcus', last: 'Bell', title: 'Director of Operations', email: '' },
+    ],
+    _directEmails: ['dwhitfield@empireracquet.com'],
+    _sharedEmails: ['info@empireracquet.com'],
+    _locations: [{ street: '1 A St', city: 'Irvine', zip: '92618' }],
+  }]]);
+  const { rows } = buildN8n(master, contacts, { state: 'CA' });
+
+  // Dana: published direct -> Contact Email set, Work Email blank.
+  const dana = rows.find((r) => r['Contact Name'] === 'Dana Whitfield');
+  assert.equal(dana['Contact Email'], 'dwhitfield@empireracquet.com');
+  assert.equal(dana['Work Email'], '');
+  assert.equal(dana['Final Email'], dana['Contact Email']);
+  assert.equal(dana['Email Source'], 'Published Direct');
+
+  // Marcus has no published address -> exactly six guessed rows, kept separate
+  // from Dana's row.
+  const marcus = rows.filter((r) => r['Contact Name'] === 'Marcus Bell');
+  assert.equal(marcus.length, 6);
+  assert.deepEqual(marcus.map((r) => r['Email Source']).sort(),
+    ['Guessed Pattern 1','Guessed Pattern 2','Guessed Pattern 3','Guessed Pattern 4','Guessed Pattern 5','Guessed Pattern 6']);
+  assert.ok(marcus.every((r) => /GUESSED PATTERN/.test(r['Fit Notes'])));
+
+  // Generic inbox survives alongside the named contacts, as a Team row.
+  const team = rows.find((r) => r['Contact Name'] === 'Team');
+  assert.equal(team['Contact Title'], 'Facility Team');
+  assert.equal(team['Contact Email'], '');
+  assert.equal(team['Work Email'], 'info@empireracquet.com');
+  assert.equal(team['Final Email'], 'info@empireracquet.com');
+  assert.match(team['Fit Notes'], /Hey team,/);
+
+  // Never invented, and never more than one address in a cell.
+  assert.ok(rows.every((r) => r['Contact LinkedIn'] === '' && r['Phone'] === ''));
+  assert.ok(rows.every((r) => !/[,;\s]/.test(r['Final Email'])));
+  assert.equal(new Set(rows.map((r) => r['Final Email'])).size, rows.length);
+  assert.ok(rows.every((r) => r['Track ID'] === 'CA-COURTS-001'));
+});
+await check('needs-review facilities never reach the n8n csv', () => {
+  const master = [{
+    'Facility Name': 'Unclear Club', Website: 'https://unclear.com/', City: 'Fresno', State: 'CA',
+    'Qualification Status': QUALIFICATION.NEEDS_REVIEW, 'Email Domain': 'unclear.com',
+    'Shared Facility Email': 'info@unclear.com', 'Research Notes': '', 'Source URLs': 'https://unclear.com/',
+  }];
+  const { rows, reviewRows } = buildN8n(master, new Map(), { state: 'CA' });
+  assert.equal(rows.length, 0);
+  assert.equal(reviewRows.length, 1);
+});
+await check('fit notes state only sourced facts', () => {
+  const notes = fitNotes({
+    facility: { 'Facility Name': 'X Club', 'Facility Type': 'Pickleball Club', City: 'Irvine',
+                'Indoor Court Status': 'Indoor', 'Sports Offered': 'pickleball', 'Number of Courts': '',
+                'Qualification Status': 'Confirmed Indoor', 'Source URLs': 'https://x.com/' },
+    person: null, kind: 'generic', state: 'CA', branches: [],
+  });
+  // No court count was sourced, so none is claimed.
+  assert.ok(!/court count/i.test(notes));
+  assert.match(notes, /Hey team,/);
+  assert.match(notes, /Sources: https:\/\/x\.com\//);
 });
 
 await browser.close();
