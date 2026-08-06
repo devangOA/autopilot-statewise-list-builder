@@ -338,6 +338,10 @@ async function enrichAll(browser, sites) {
         if (USE_FALLBACK) {
           fallbackQueue.push({ domain: site.domain, url: site.url, titles: site.titles || [], snippets: site.snippets || [], reason: msg });
           log(`  queue ${site.domain}: ${msg}`);
+          // Counted as handed off, not as researched: `attempted` is still not
+          // set, so the fallback decides the final verdict, but the primary
+          // loop's own progress count stays accurate.
+          done++;
           continue;
         }
         log(`  fail ${site.domain}: ${msg}`);
@@ -355,13 +359,16 @@ async function enrichAll(browser, sites) {
 
   // Exactly one fallback worker, by design: it runs a Python subprocess per URL
   // and must not compete with the primary crawlers for CPU on a laptop.
+  let primariesFinished = false;
   async function fallbackWorker() {
     if (!USE_FALLBACK) return;
     while (true) {
       const job = fallbackQueue.shift();
       if (!job) {
-        // Primaries still running: wait for more failures. Otherwise finish.
-        if (done >= list.length && next >= list.length) break;
+        // An explicit signal, not a counter comparison: a site handed to the
+        // fallback never completes in the primary loop, so inferring "done"
+        // from those counters left this worker sleeping forever.
+        if (primariesFinished) break;
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
@@ -395,11 +402,12 @@ async function enrichAll(browser, sites) {
     }
   }
 
-  await Promise.all([
-    ...Array.from({ length: Math.max(1, CONCURRENCY) }, worker),
-    fallbackWorker(),
-  ]);
-  // Drain anything queued after the primaries finished.
+  const primaries = Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker)).then(() => {
+    primariesFinished = true;
+  });
+  await Promise.all([primaries, fallbackWorker()]);
+  // Drain anything the primaries queued just before finishing.
+  primariesFinished = true;
   await fallbackWorker();
   flush();
   log(`fallback: ${fbStats.attempted} attempted, ${fbStats.fetcher} recovered by Fetcher, ` +
