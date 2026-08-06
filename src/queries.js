@@ -49,12 +49,12 @@ const STATEWIDE = [
   'sportsplex New York State',
 ];
 
-export function buildQueries({ markets = NY_MARKETS, templates = TEMPLATES, limit = 0 } = {}) {
+export function buildQueries({ markets = NY_MARKETS, templates = TEMPLATES, statewide = STATEWIDE, limit = 0 } = {}) {
   const out = [];
   for (const m of markets) {
     for (const t of templates) out.push(t.replace('{m}', m));
   }
-  out.push(...STATEWIDE);
+  out.push(...statewide);
   return limit > 0 ? out.slice(0, limit) : out;
 }
 

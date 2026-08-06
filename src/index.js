@@ -7,17 +7,19 @@ import path from 'node:path';
 import { launchBrowser, newCrawlContext, preferHttps } from './browser.js';
 import { COLUMNS, QUALIFICATION } from './schema.js';
 import { buildQueries } from './queries.js';
-import { NY_MARKETS } from './geo.js';
-import { searchQuery, registrableDomain, isNonFacilityHost, isGovHost } from './search.js';
+import { stateConfig } from './states.js';
+import { searchQuery, registrableDomain, isNonFacilityHost, isGovHost, setGovPatterns } from './search.js';
 import {
   fetchPage, pickSubpages, extractEmails, classifyEmails, extractPeople,
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
   looksRetail, detectNyEvidence, guessFacilityType, detectCity,
   guessTitleFromName, decodeEntities, matchEmailsToPeople, detectAddresses,
+  detectStateEvidence, setActiveState,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
 import { finalize } from './finalize.js';
+import { fetchWithFallback, fallbackAvailable, RETRIEVAL } from './fallback.js';
 import { toCsv } from './csv.js';
 
 // --------------------------------------------------------------------------
@@ -29,11 +31,16 @@ function arg(name, def) {
 }
 const OUT = arg('out', 'NEW_YORK_INDOOR_COURT_FACILITIES.csv');
 const STATE = arg('state', 'NY');
+const ST = setActiveState(STATE);
+setGovPatterns(ST.gov);
 const MAX_QUERIES = parseInt(arg('max-queries', '0'), 10);
 const MAX_SITES = parseInt(arg('max-sites', '0'), 10);
 const CONCURRENCY = parseInt(arg('concurrency', '4'), 10);
 const DISCOVERY_CONCURRENCY = parseInt(arg('discovery-concurrency', '4'), 10);
 const CACHE_DIR = arg('cache', '.cache');
+// Fallback is opt-out and silently disabled when the Python venv is absent, so
+// the crawler still runs on a machine that never installed Scrapling.
+const USE_FALLBACK = process.argv.includes('--no-fallback') ? false : fallbackAvailable();
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -57,7 +64,7 @@ async function discover(browser) {
     return sites;
   }
 
-  const all = buildQueries({ markets: NY_MARKETS, limit: MAX_QUERIES });
+  const all = buildQueries({ markets: ST.markets, statewide: ST.statewide, limit: MAX_QUERIES });
 
   // Resume at query granularity, not all-or-nothing: a crash 3000 queries into
   // a statewide fan-out should not restart discovery from zero.
@@ -139,50 +146,17 @@ async function discover(browser) {
 // --------------------------------------------------------------------------
 // Phase 2 - enrichment
 // --------------------------------------------------------------------------
-async function enrichSite(page, site) {
-  const sources = [];
-  let text = '';
-  let html = '';
-  let links = [];
-
-  // Try https first (the only scheme a CONNECT-only proxy can tunnel), then the
-  // www. form, then the original URL as given.
-  const attempts = [...new Set([preferHttps(site.url), `https://www.${site.domain}`, site.url])];
-  let home = null;
-  let lastErr = null;
-  for (const attempt of attempts) {
-    try {
-      home = await fetchPage(page, attempt);
-      break;
-    } catch (e) {
-      lastErr = e;
-      // Clear the failed navigation before retrying; otherwise the next goto is
-      // reported as "interrupted by another navigation". goto() resolves on
-      // commit, so the error page can still be settling - wait it out briefly.
-      await page.goto('about:blank').catch(() => {});
-      await page.waitForTimeout(250).catch(() => {});
-    }
-  }
-  if (!home) throw lastErr;
-  sources.push(home.url);
-  text += '\n' + home.text;
-  html += '\n' + home.html;
-  links = home.links;
-
-  const name = guessTitleFromName(home.html) || decodeEntities(site.titles[0] || '') || site.domain;
-
-  for (const sub of pickSubpages(links, site.domain, 6)) {
-    try {
-      const p = await fetchPage(page, sub, { timeout: 20000 });
-      sources.push(p.url);
-      text += '\n' + p.text;
-      html += '\n' + p.html;
-    } catch {
-      /* a dead interior page should not sink the facility */
-    }
-  }
-
-  const searchBlurb = [...site.titles, ...site.snippets].join('\n');
+/**
+ * Build a facility row from an already-retrieved page bundle. Shared by the
+ * Playwright path and the Scrapling fallback so both produce identical rows and
+ * differ only in `Retrieval Method`.
+ */
+function buildRow(site, pages, meta = {}) {
+  const text = pages.map((p) => p.text || '').join('\n');
+  const html = pages.map((p) => p.html || '').join('\n');
+  const sources = [...new Set(pages.map((p) => p.url))];
+  const name = guessTitleFromName(pages[0]?.html || '') || decodeEntities(site.titles?.[0] || '') || site.domain;
+  const searchBlurb = [...(site.titles || []), ...(site.snippets || [])].join('\n');
   const corpus = `${text}\n${searchBlurb}`;
 
   const { indoor, outdoor, outdoorOnly } = detectIndoor(corpus);
@@ -190,23 +164,17 @@ async function enrichSite(page, site) {
   const excludedBy = looksExcluded(name, corpus);
   const monetized = looksMonetized(corpus);
   const retail = looksRetail(text);
-  // Location evidence is taken from the pages themselves, never from search
-  // snippets: a snippet says "NY" because the query did.
-  const nyEvidence = detectNyEvidence(text);
-  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence });
+  const stateEvidence = detectStateEvidence(text, STATE);
+  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence: stateEvidence });
 
   const emails = extractEmails(text, html);
   const { shared, sharedAll, direct } = classifyEmails(emails, site.domain, name);
-  // A person whose name is just words lifted out of the facility's own name is
-  // an artifact, not a contact ("Marlene Meyerson JCC Manhattan" -> "Meyerson
-  // Manhattan"). Drop those before picking the best decision maker.
   const nameWords = new Set(name.toLowerCase().split(/[^a-z]+/).filter(Boolean));
   const people = extractPeople(text).filter(
     (p) => !(nameWords.has(p.first.toLowerCase()) && nameWords.has(p.last.toLowerCase())),
   );
   const person = people[0] || null;
 
-  // A direct email whose local part echoes the person's name is the best match.
   let publicDirect = '';
   if (person) {
     const f = person.first.toLowerCase();
@@ -223,15 +191,16 @@ async function enrichSite(page, site) {
   const { count, note } = detectCourtCount(corpus);
 
   const notes = [verdict.reason];
-  if (nyEvidence) notes.push(`NY location evidence: ${nyEvidence}.`);
+  if (stateEvidence) notes.push(`${STATE} location evidence: ${stateEvidence}.`);
   if (!person) notes.push('No decision maker found on public pages.');
   if (guesses[0]) notes.push(GUESS_DISCLAIMER);
   if (!count) notes.push('No court count stated by a reliable source; left blank.');
   if (monetized) notes.push('Paid access signals present (membership/rental/program).');
+  if (meta.fallbackNote) notes.push(meta.fallbackNote);
 
   return {
     'Facility Name': name,
-    Website: home.url,
+    Website: pages[0]?.url || site.url,
     City: detectCity(text),
     State: STATE,
     'Facility Type': guessFacilityType(name, corpus),
@@ -253,27 +222,47 @@ async function enrichSite(page, site) {
     'Email Domain': site.domain,
     'Qualification Status': verdict.status,
     'Research Notes': notes.join(' '),
-    'Source URLs': [...new Set(sources)].join(' | '),
-
-    // Underscore-prefixed fields are not in COLUMNS, so they never reach the
-    // master CSV -- but they are persisted in the cache, where the per-contact
-    // verification file picks them up. A facility routinely lists several
-    // people worth contacting; keeping only the top-ranked one throws away
-    // reachable decision makers.
+    'Source URLs': sources.join(' | '),
+    'Retrieval Method': meta.method || RETRIEVAL.PLAYWRIGHT,
+    'Requested URL': site.url,
+    'Final URL': meta.finalUrl || pages[0]?.url || site.url,
+    'Failure Reason': meta.failureReason || '',
     _people: matchEmailsToPeople(people.slice(0, 8), direct),
     _directEmails: direct,
     _sharedEmails: sharedAll,
-    // Branch addresses. An operator with several New York sites is several
-    // contactable facilities, not one.
     _locations: detectAddresses(text),
   };
 }
 
-// Playwright's wording when the browser or its context is gone, as opposed to
-// a site-specific failure. Used to tell "we were killed" from "this site is
-// broken", which decides whether a domain counts as researched.
-const BROWSER_GONE =
-  /Target (page|closed)|context or browser has been closed|Browser(Context)? has been closed|browser has disconnected|Protocol error|Connection closed|Session closed/i;
+async function enrichSite(page, site) {
+  // Try https first, then the www. form, then the URL as given.
+  const attempts = [...new Set([preferHttps(site.url), `https://www.${site.domain}`, site.url])];
+  let home = null;
+  let lastErr = null;
+  for (const attempt of attempts) {
+    try {
+      home = await fetchPage(page, attempt);
+      break;
+    } catch (e) {
+      lastErr = e;
+      // Clear the failed navigation before retrying; otherwise the next goto is
+      // reported as "interrupted by another navigation".
+      await page.goto('about:blank').catch(() => {});
+      await page.waitForTimeout(250).catch(() => {});
+    }
+  }
+  if (!home) throw lastErr;
+
+  const pages = [home];
+  for (const sub of pickSubpages(home.links, site.domain, 6)) {
+    try {
+      pages.push(await fetchPage(page, sub, { timeout: 20000 }));
+    } catch {
+      /* a dead interior page should not sink the facility */
+    }
+  }
+  return buildRow(site, pages, { method: RETRIEVAL.PLAYWRIGHT });
+}
 
 async function enrichAll(browser, sites) {
   const attemptedPath = path.join(CACHE_DIR, 'attempted.json');
@@ -282,10 +271,15 @@ async function enrichAll(browser, sites) {
   // Enrichment resumes like discovery does. A site is "attempted" whether it
   // qualified, was skipped or failed, so a second discovery wave only crawls
   // the domains it actually added instead of re-fetching thousands of sites.
+  const queuePath = path.join(CACHE_DIR, 'fallback-queue.json');
   const attempted = new Set(
     fs.existsSync(attemptedPath) ? JSON.parse(fs.readFileSync(attemptedPath, 'utf8')) : [],
   );
   const rows = fs.existsSync(rowsPath) ? JSON.parse(fs.readFileSync(rowsPath, 'utf8')) : [];
+  // Survives pause, restart, internet loss and browser shutdown: a URL sits
+  // here until every allowed retrieval method has been tried.
+  const fallbackQueue = fs.existsSync(queuePath) ? JSON.parse(fs.readFileSync(queuePath, 'utf8')) : [];
+  const fbStats = { attempted: 0, fetcher: 0, stealth: 0, rejected: 0, failed: 0 };
 
   let list = Object.values(sites).filter((s) => !attempted.has(s.domain));
   if (MAX_SITES > 0) list = list.slice(0, MAX_SITES);
@@ -297,6 +291,7 @@ async function enrichAll(browser, sites) {
   const flush = () => {
     fs.writeFileSync(rowsPath, JSON.stringify(rows));
     fs.writeFileSync(attemptedPath, JSON.stringify([...attempted]));
+    fs.writeFileSync(queuePath, JSON.stringify(fallbackQueue));
     // A statewide run takes hours; keep a usable deliverable on disk the whole
     // way through rather than only at the end.
     fs.writeFileSync(OUT, toCsv(dedupe(rows), COLUMNS));
@@ -322,6 +317,14 @@ async function enrichAll(browser, sites) {
           log(`  abort ${site.domain}: browser closed - left unmarked for resume`);
           break;
         }
+        // Playwright failing is not the final verdict any more: the URL goes to
+        // the fallback queue and is only marked attempted once every allowed
+        // method has been exhausted.
+        if (USE_FALLBACK) {
+          fallbackQueue.push({ domain: site.domain, url: site.url, titles: site.titles || [], snippets: site.snippets || [], reason: msg });
+          log(`  queue ${site.domain}: ${msg}`);
+          continue;
+        }
         log(`  fail ${site.domain}: ${msg}`);
       }
       // Marked after the attempt regardless of outcome: a site that failed or
@@ -335,8 +338,58 @@ async function enrichAll(browser, sites) {
     await ctx.close();
   }
 
-  await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker));
+  // Exactly one fallback worker, by design: it runs a Python subprocess per URL
+  // and must not compete with the primary crawlers for CPU on a laptop.
+  async function fallbackWorker() {
+    if (!USE_FALLBACK) return;
+    while (true) {
+      const job = fallbackQueue.shift();
+      if (!job) {
+        // Primaries still running: wait for more failures. Otherwise finish.
+        if (done >= list.length && next >= list.length) break;
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      fbStats.attempted++;
+      const res = await fetchWithFallback(job.url);
+      if (res.ok) {
+        if (res.method === RETRIEVAL.FETCHER) fbStats.fetcher++;
+        else fbStats.stealth++;
+        try {
+          const row = buildRow(job, res.pages, {
+            method: res.method,
+            finalUrl: res.finalUrl,
+            failureReason: `Playwright failed: ${job.reason}`,
+            fallbackNote: `Retrieved by ${res.method} after Playwright failed.`,
+          });
+          if (isKeepable(row['Qualification Status'])) rows.push(row);
+          else log(`  fb-skip ${job.domain} (${row['Qualification Status']})`);
+        } catch (e) {
+          log(`  fb-fail ${job.domain}: ${e.message.split('\n')[0]}`);
+        }
+      } else {
+        if (res.rejected) {
+          fbStats.rejected++;
+          log(`  fb-REJECT ${job.domain}: ${res.reason}`);
+        } else {
+          fbStats.failed++;
+        }
+      }
+      attempted.add(job.domain);
+      flush();
+    }
+  }
+
+  await Promise.all([
+    ...Array.from({ length: Math.max(1, CONCURRENCY) }, worker),
+    fallbackWorker(),
+  ]);
+  // Drain anything queued after the primaries finished.
+  await fallbackWorker();
   flush();
+  log(`fallback: ${fbStats.attempted} attempted, ${fbStats.fetcher} recovered by Fetcher, ` +
+      `${fbStats.stealth} by Stealth, ${fbStats.rejected} rejected by safety guards, ${fbStats.failed} unrecoverable`);
+  fs.writeFileSync(path.join(CACHE_DIR, 'fallback-stats.json'), JSON.stringify(fbStats));
   return rows;
 }
 

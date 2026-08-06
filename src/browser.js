@@ -36,7 +36,16 @@ export async function launchBrowser(extra = {}) {
 }
 
 export async function newCrawlContext(browser, { blockAssets = true } = {}) {
-  const ctx = await browser.newContext({ userAgent: UA, viewport: { width: 1280, height: 900 } });
+  // Certificate errors are the single largest recoverable failure class on this
+  // corpus: 77 of ~230 real failures in the New York run were ERR_CERT_* or
+  // ERR_SSL_*, almost all small clubs on an expired or mismatched certificate.
+  // The crawl only ever reads public marketing pages, so trusting a bad cert
+  // costs nothing and recovers the facility.
+  const ctx = await browser.newContext({
+    userAgent: UA,
+    viewport: { width: 1280, height: 900 },
+    ignoreHTTPSErrors: true,
+  });
   const page = await ctx.newPage();
   if (blockAssets) {
     // Images/fonts/video are pure cost for a text-extraction crawl.

@@ -1,2 +1,7 @@
 .cache/
 node_modules/
+
+# Scrapling evaluation sandbox (experimental, not production)
+experiments/**/.venv/
+experiments/**/*.log
+experiments/**/out/

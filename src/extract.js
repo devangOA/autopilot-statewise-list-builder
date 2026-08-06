@@ -1,4 +1,16 @@
 import { SPORTS } from './schema.js';
+import { stateConfig } from './states.js';
+
+// The crawl runs one state at a time, so the active state is module state
+// rather than a parameter threaded through every extraction function.
+let ACTIVE = null;
+export function setActiveState(code) {
+  ACTIVE = stateConfig(code);
+  return ACTIVE;
+}
+function active() {
+  return ACTIVE || stateConfig('NY');
+}
 
 // ---------------------------------------------------------------------------
 // Text normalization
@@ -534,8 +546,10 @@ const NY_PLACES = new Set(
  * name, and a run that matches a known New York municipality wins outright.
  */
 export function detectCity(text) {
+  const st = active();
+  const places = st.places || NY_PLACES;
   const t = String(text || '').replace(/\s+/g, ' ');
-  const re = /([A-Za-z][A-Za-z.'’\- ]{2,60}?),\s*(?:NY|New York)\b/g;
+  const re = new RegExp(`([A-Za-z][A-Za-z.'’\\- ]{2,60}?),\\s*${st.stateRe.source}\\b`, 'g');
   const counts = new Map();
   const known = new Map();
   let m;
@@ -555,7 +569,7 @@ export function detectCity(text) {
     let hit = '';
     for (let n = Math.min(parts.length, 3); n >= 1; n--) {
       const tail = parts.slice(parts.length - n).join(' ');
-      if (NY_PLACES.has(normalizeCity(tail).toLowerCase())) {
+      if (places.has(normalizeCity(tail).toLowerCase())) {
         hit = tail;
         break;
       }
@@ -571,7 +585,7 @@ export function detectCity(text) {
     if (city.length < 3 || city.length > 28) continue;
     if (STREET_WORD.test(city)) continue;
     counts.set(city, (counts.get(city) || 0) + 1);
-    if (NY_PLACES.has(city.toLowerCase())) known.set(city, (known.get(city) || 0) + 1);
+    if (places.has(city.toLowerCase())) known.set(city, (known.get(city) || 0) + 1);
   }
   const pick = (mp) => [...mp.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
   // A recognized municipality beats a merely well-formed token run.
@@ -644,7 +658,7 @@ export function detectAddresses(text) {
     `(\\d{1,6}[A-Za-z]?\\s+[A-Za-z0-9.'\`\\-\\s]{2,40}?${STREET_SUFFIX}\\.?)` + // street
       `(?:\\s*,?\\s*(?:Suite|Ste|Unit|Bldg|Building|Floor|Fl)\\.?\\s*[\\w-]+)?` + // optional unit
       `\\s*,\\s*([A-Z][A-Za-z.'\\-]*(?:\\s+[A-Z][A-Za-z.'\\-]*){0,2})` + // city
-      `\\s*,\\s*(?:NY|New York)\\b\\s*(\\d{5})?`, // state + optional zip
+      `\\s*,\\s*${active().stateRe.source}\\b\\s*(\\d{5})?`, // state + optional zip
     'g',
   );
   const seen = new Map();
@@ -679,11 +693,24 @@ const NY_AREA_CODES = /\(?(212|315|332|347|516|518|585|607|631|646|680|716|718|8
  * NY". Without this gate those rows land in a file titled NEW_YORK_..., which
  * is worse than omitting them.
  */
-export function detectNyEvidence(text) {
+export function detectStateEvidence(text, code) {
+  const st = code ? stateConfig(code) : active();
   const t = String(text || '').replace(/\s+/g, ' ');
-  if (/,\s*(?:NY|New York)\b/i.test(t)) return 'address';
-  if (/\bNY\s+1\d{4}\b/.test(t)) return 'zip';
-  if (NY_AREA_CODES.test(t)) return 'phone';
-  if (/\bNew York (?:State|City)\b/i.test(t)) return 'mention';
+  // A ZIP sitting right after the state token must belong to that state. Without
+  // this, "Somewhere, CA 12345" reads as California on the strength of the two
+  // letters alone, and an out-of-state facility slips into the list.
+  const addr = new RegExp(`,\\s*${st.stateRe.source}\\b\\s*(\\d{5})?`, 'g');
+  let am;
+  while ((am = addr.exec(t)) !== null) {
+    if (!am[1] || st.zipBare.test(am[1])) return 'address';
+  }
+  if (st.zipRe.test(t)) return 'zip';
+  if (st.areaCodes.test(t)) return 'phone';
+  if (st.mentionRe.test(t)) return 'mention';
   return '';
+}
+
+// Kept so existing New York callers and tests keep working unchanged.
+export function detectNyEvidence(text) {
+  return detectStateEvidence(text, 'NY');
 }

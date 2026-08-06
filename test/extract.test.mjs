@@ -18,6 +18,9 @@ import { toCsv } from '../src/csv.js';
 import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDomain } from '../src/search.js';
 import { finalize, mailDomain, nameKey, looksLikePublisher } from '../src/finalize.js';
 import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
+import { validateFallback, RETRIEVAL } from '../src/fallback.js';
+import { setActiveState, detectStateEvidence } from '../src/extract.js';
+import { stateConfig } from '../src/states.js';
 import { proxyConfig, preferHttps } from '../src/browser.js';
 
 const dir = path.join(import.meta.dirname, 'fixtures');
@@ -428,6 +431,100 @@ await check('a staff roster cannot flood the verification file', () => {
     { _people: [], _directEmails: many, _sharedEmails: [] },
   );
   assert.ok(c.length <= 3, `expected the cap to hold, got ${c.length}`);
+});
+
+// ---- Scrapling fallback safety guards ------------------------------------
+const FACILITY_PAGE = 'Welcome to our indoor pickleball club. 6 indoor courts, membership and court booking available.';
+
+await check('fallback accepts a genuine same-domain facility page', () => {
+  const v = validateFallback({
+    requestedUrl: 'https://bgcsyracuse.org/',
+    finalUrl: 'https://bgcsyracuse.org/',
+    text: FACILITY_PAGE,
+  });
+  assert.ok(v.ok, v.reason);
+});
+await check('fallback rejects an off-domain redirect', () => {
+  // A 200 is not enough: the content belongs to somebody else.
+  const v = validateFallback({
+    requestedUrl: 'https://joespickleball.com/',
+    finalUrl: 'https://audiomentoring.com/',
+    text: FACILITY_PAGE,
+  });
+  assert.ok(!v.ok);
+  assert.match(v.reason, /off-domain/);
+});
+await check('fallback rejects a hijacked/parked domain', () => {
+  // The real case: joespickleball.com now serves an Indonesian gambling portal,
+  // which Playwright refused and Scrapling returned as HTTP 200.
+  const v = validateFallback({
+    requestedUrl: 'https://joespickleball.com/',
+    finalUrl: 'https://joespickleball.com/',
+    text: 'PAKDE4D: Portal Bandar Toto Online Resmi dengan Link Login. Slot gacor. pickleball courts',
+  });
+  assert.ok(!v.ok);
+  assert.match(v.reason, /parked|hijack|unrelated/i);
+  // Domain-for-sale pages are caught too.
+  assert.ok(!validateFallback({
+    requestedUrl: 'https://x.com/', finalUrl: 'https://x.com/',
+    text: 'This domain is for sale. Buy this domain. tennis courts',
+  }).ok);
+});
+await check('fallback rejects a page with no court-sport evidence', () => {
+  const v = validateFallback({
+    requestedUrl: 'https://example.org/', finalUrl: 'https://example.org/',
+    text: 'We sell industrial fasteners and hardware to contractors nationwide.',
+  });
+  assert.ok(!v.ok);
+  assert.match(v.reason, /no court sport/i);
+});
+await check('fallback rejects an empty document', () => {
+  assert.ok(!validateFallback({ requestedUrl: 'https://a.com/', finalUrl: 'https://a.com/', text: '   ' }).ok);
+});
+await check('fallback tolerates www and vanity subdomain differences', () => {
+  // Same facility, not an off-domain redirect.
+  assert.ok(validateFallback({
+    requestedUrl: 'https://bgcsyracuse.org/',
+    finalUrl: 'https://www.bgcsyracuse.org/contact/',
+    text: FACILITY_PAGE,
+  }).ok);
+});
+await check('retrieval method labels are the agreed three', () => {
+  assert.deepEqual(
+    [RETRIEVAL.PLAYWRIGHT, RETRIEVAL.FETCHER, RETRIEVAL.STEALTH],
+    ['Playwright', 'Scrapling Fetcher', 'Scrapling Stealth'],
+  );
+});
+
+// ---- multi-state support --------------------------------------------------
+await check('california location gate accepts CA and rejects other states', () => {
+  setActiveState('CA');
+  assert.equal(detectStateEvidence('1234 Ocean Ave, Santa Monica, CA 90401'), 'address');
+  assert.equal(detectStateEvidence('Call us at (415) 555-0134'), 'phone');
+  // A New York facility must not qualify for the California list.
+  assert.equal(detectStateEvidence('55 Court St, Brooklyn, NY 11201'), '');
+  // ZIPs outside 90000-96199 are not California.
+  assert.equal(detectStateEvidence('Somewhere, CA 12345'), '');
+});
+await check('california city and branch parsing', () => {
+  setActiveState('CA');
+  assert.equal(detectCity('Located at 1234 Ocean Ave, Santa Monica, CA 90401'), 'Santa Monica');
+  const b = detectAddresses('A: 100 Main St, Irvine, CA 92618. B: 200 Elm Ave, Fresno, CA 93701');
+  assert.equal(b.length, 2);
+  assert.deepEqual(b.map((x) => x.city).sort(), ['Fresno', 'Irvine']);
+});
+await check('switching state back leaves New York behaviour intact', () => {
+  setActiveState('NY');
+  assert.equal(detectStateEvidence('55 Court St, Brooklyn, NY 11201'), 'address');
+  assert.equal(detectCity('1234 Monroe Ave, Rochester, NY 14618'), 'Rochester');
+  assert.equal(detectStateEvidence('1234 Ocean Ave, Santa Monica, CA 90401'), '');
+});
+await check('state config exposes markets, gov patterns and statewide queries', () => {
+  const ca = stateConfig('CA');
+  assert.ok(ca.markets.length > 200, `expected broad CA coverage, got ${ca.markets.length}`);
+  assert.ok(ca.statewide.length >= 10);
+  assert.ok(ca.gov.some((r) => r.test('parks.ca.us')));
+  assert.throws(() => stateConfig('ZZ'), /Unknown state/);
 });
 
 await browser.close();

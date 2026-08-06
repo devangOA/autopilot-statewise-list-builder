@@ -24,6 +24,12 @@ export const COLUMNS = [
   'Qualification Status',
   'Research Notes',
   'Source URLs',
+  // Provenance: which fetcher produced the row, what was asked for, what was
+  // actually served, and why the primary crawler failed if it did.
+  'Retrieval Method',
+  'Requested URL',
+  'Final URL',
+  'Failure Reason',
 ];
 
 export const QUALIFICATION = {

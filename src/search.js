@@ -169,7 +169,11 @@ export function isNonFacilityHost(host) {
 }
 
 // Public parks / government / municipal domains are out of scope per the brief.
-const GOV_PATTERNS = [/\.gov$/i, /\.ny\.us$/i, /\.state\.ny\.us$/i, /\.mil$/i];
+let GOV_PATTERNS = [/\.gov$/i, /\.ny\.us$/i, /\.state\.ny\.us$/i, /\.mil$/i];
+// Set per run from the active state's config; defaults keep New York working.
+export function setGovPatterns(patterns) {
+  if (patterns?.length) GOV_PATTERNS = patterns;
+}
 export function isGovHost(host) {
   return GOV_PATTERNS.some((p) => p.test(host));
 }
