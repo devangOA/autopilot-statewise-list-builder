@@ -22,7 +22,8 @@ import { validateFallback, RETRIEVAL } from '../src/fallback.js';
 import { N8N_COLUMNS, fitNotes, build as buildN8n } from '../src/n8n.js';
 import { setActiveState, detectStateEvidence } from '../src/extract.js';
 import { stateConfig } from '../src/states.js';
-import { proxyConfig, preferHttps } from '../src/browser.js';
+import { buildQueries, CORE_TEMPLATES, TEMPLATES } from '../src/queries.js';
+import { proxyConfig, preferHttps, BROWSER_GONE } from '../src/browser.js';
 
 const dir = path.join(import.meta.dirname, 'fixtures');
 const server = http.createServer((req, res) => {
@@ -607,6 +608,38 @@ await check('fit notes state only sourced facts', () => {
   assert.ok(!/court count/i.test(notes));
   assert.match(notes, /Hey team,/);
   assert.match(notes, /Sources: https:\/\/x\.com\//);
+});
+
+await check('query tiering keeps coverage while cutting volume', () => {
+  const markets = ['Big City CA', 'Small Town CA'];
+  const tiered = buildQueries({ markets, majorMarkets: ['Big City CA'], statewide: [] });
+  // Every market is still queried - tiering reduces angles, never coverage.
+  assert.ok(tiered.some((q) => q.includes('Small Town CA')));
+  assert.equal(tiered.filter((q) => q.includes('Big City CA')).length, TEMPLATES.length);
+  assert.equal(tiered.filter((q) => q.includes('Small Town CA')).length, CORE_TEMPLATES.length);
+  // Without a major-market list the behaviour is unchanged.
+  const flat = buildQueries({ markets, statewide: [] });
+  assert.equal(flat.length, markets.length * TEMPLATES.length);
+});
+
+await check('browser-gone detection distinguishes a kill from a bad site', () => {
+  // This constant went missing from the orchestrator once and killed a crawl on
+  // its first failure; `node --check` cannot catch an undefined identifier, so
+  // it is asserted here instead.
+  assert.ok(BROWSER_GONE instanceof RegExp);
+  for (const m of [
+    'page.goto: Target page, context or browser has been closed',
+    'Browser has been closed',
+    'Protocol error (Page.navigate): Connection closed',
+  ]) assert.ok(BROWSER_GONE.test(m), `should be treated as a kill: ${m}`);
+  // Site-specific failures must NOT be mistaken for a dead browser, or the
+  // crawler would abandon the queue every time one site 403s.
+  for (const m of [
+    'HTTP 403 for https://x.com',
+    'page.goto: net::ERR_CERT_COMMON_NAME_INVALID',
+    'page.goto: Timeout 25000ms exceeded.',
+    'page.goto: net::ERR_NAME_NOT_RESOLVED',
+  ]) assert.ok(!BROWSER_GONE.test(m), `should be treated as a site failure: ${m}`);
 });
 
 await browser.close();

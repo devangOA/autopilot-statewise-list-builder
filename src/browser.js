@@ -65,3 +65,18 @@ export async function newCrawlContext(browser, { blockAssets = true } = {}) {
 export function preferHttps(url) {
   return String(url || '').replace(/^http:\/\//i, 'https://');
 }
+
+/**
+ * Playwright's wording when the browser or its context is gone, as opposed to a
+ * site-specific failure.
+ *
+ * The distinction decides whether a domain counts as researched: on a kill,
+ * every in-flight and queued site fails instantly, and marking those "attempted"
+ * makes a resume skip hundreds of sites it never visited. Exported from here
+ * rather than living inline in the orchestrator so it can be tested directly -
+ * it previously went missing from index.js entirely, which `node --check` could
+ * not catch because an undefined identifier is a runtime error, not a syntax
+ * error, and the crawl died on its first Playwright failure.
+ */
+export const BROWSER_GONE =
+  /Target (page|closed)|context or browser has been closed|Browser(Context)? has been closed|browser has disconnected|Protocol error|Connection closed|Session closed/i;

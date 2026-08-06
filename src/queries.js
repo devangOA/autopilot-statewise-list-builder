@@ -49,10 +49,41 @@ const STATEWIDE = [
   'sportsplex New York State',
 ];
 
-export function buildQueries({ markets = NY_MARKETS, templates = TEMPLATES, statewide = STATEWIDE, limit = 0 } = {}) {
+// The highest-yield angles, measured on the New York run. Every market gets
+// these; only major markets get the full template set.
+//
+// This tiering exists because query volume is the binding constraint, not
+// coverage: search engines rate-limit collectively, and California at 267
+// markets x 31 templates drove all six engines into simultaneous 429/403 and
+// collapsed throughput to ~6 queries/min. Ten angles in a town of 6,000 finds
+// what thirty-one would; the difference is only felt in dense markets.
+export const CORE_TEMPLATES = [
+  'indoor pickleball courts {m}',
+  'indoor tennis club {m}',
+  'indoor basketball courts rental {m}',
+  'indoor volleyball club {m}',
+  'indoor badminton club {m}',
+  'indoor sports complex {m}',
+  'racquet club {m}',
+  'sportsplex {m}',
+  'athletic club indoor courts {m}',
+  'court rental {m}',
+];
+
+export function buildQueries({
+  markets = NY_MARKETS,
+  majorMarkets = null,
+  templates = TEMPLATES,
+  coreTemplates = CORE_TEMPLATES,
+  statewide = STATEWIDE,
+  limit = 0,
+} = {}) {
   const out = [];
+  const major = majorMarkets ? new Set(majorMarkets) : null;
   for (const m of markets) {
-    for (const t of templates) out.push(t.replace('{m}', m));
+    // No major-market list supplied: behave exactly as before.
+    const set = !major || major.has(m) ? templates : coreTemplates;
+    for (const t of set) out.push(t.replace('{m}', m));
   }
   out.push(...statewide);
   return limit > 0 ? out.slice(0, limit) : out;

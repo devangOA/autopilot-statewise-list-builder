@@ -4,7 +4,7 @@
 // CSV keyed on registrable domain.
 import fs from 'node:fs';
 import path from 'node:path';
-import { launchBrowser, newCrawlContext, preferHttps } from './browser.js';
+import { launchBrowser, newCrawlContext, preferHttps, BROWSER_GONE } from './browser.js';
 import { COLUMNS, QUALIFICATION } from './schema.js';
 import { buildQueries } from './queries.js';
 import { stateConfig } from './states.js';
@@ -41,6 +41,10 @@ const CACHE_DIR = arg('cache', '.cache');
 // Fallback is opt-out and silently disabled when the Python venv is absent, so
 // the crawler still runs on a machine that never installed Scrapling.
 const USE_FALLBACK = process.argv.includes('--no-fallback') ? false : fallbackAvailable();
+// Additive pass: run the full template set against every market, ignoring the
+// major/minor tiering. Completed queries are still skipped via the cache, so
+// this executes exactly the angles tiering deferred and nothing else.
+const ALL_TEMPLATES = process.argv.includes('--all-templates');
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -64,7 +68,12 @@ async function discover(browser) {
     return sites;
   }
 
-  const all = buildQueries({ markets: ST.markets, statewide: ST.statewide, limit: MAX_QUERIES });
+  const all = buildQueries({
+    markets: ST.markets,
+    majorMarkets: ALL_TEMPLATES ? null : ST.majorMarkets,
+    statewide: ST.statewide,
+    limit: MAX_QUERIES,
+  });
 
   // Resume at query granularity, not all-or-nothing: a crash 3000 queries into
   // a statewide fan-out should not restart discovery from zero.
@@ -105,9 +114,15 @@ async function discover(browser) {
           log('ABORT: 120 consecutive empty queries - every engine appears blocked.');
           break;
         }
-        // Every engine rate-limits eventually. Back off so the limit can decay
-        // instead of burning the rest of the query list against a wall of 429s.
-        await page.waitForTimeout(Math.min(30000, 1000 * emptyStreak)).catch(() => {});
+        // Every engine rate-limits eventually, and they do it collectively.
+        // Short per-query backoff does not let a shared limit decay, so after a
+        // sustained streak all workers take one long cooldown together.
+        if (emptyStreak > 0 && emptyStreak % 25 === 0) {
+          log(`  all engines limited (${emptyStreak} empty) - cooling down 120s`);
+          await page.waitForTimeout(120000).catch(() => {});
+        } else {
+          await page.waitForTimeout(Math.min(20000, 1500 * emptyStreak)).catch(() => {});
+        }
         // Deliberately NOT marked done: a query starved by a rate limit has not
         // been researched, and a resume must retry it rather than skip it.
         continue;

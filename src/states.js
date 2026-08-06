@@ -151,6 +151,31 @@ export const STATES = {
       /\(?(209|213|279|310|323|341|350|408|415|424|442|510|530|559|562|619|626|628|650|657|661|669|707|714|747|760|764|805|818|820|831|837|840|858|909|916|925|949|951)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
     mentionRe: /\b(?:Southern|Northern|Central) California\b|\bCalifornia\b/i,
     markets: CA_MARKETS,
+    // Dense markets worth all 31 query angles. Everywhere else gets the ten
+    // highest-yield ones, which is what keeps total query volume inside what
+    // the search engines will serve before they rate-limit collectively.
+    majorMarkets: [
+      'Los Angeles CA', 'Long Beach CA', 'Glendale CA', 'Pasadena CA', 'Torrance CA',
+      'Santa Monica CA', 'Burbank CA', 'Culver City CA', 'Santa Clarita CA', 'Woodland Hills CA',
+      'Sherman Oaks CA', 'Van Nuys CA', 'Northridge CA', 'West Covina CA', 'Pomona CA',
+      'Anaheim CA', 'Irvine CA', 'Santa Ana CA', 'Huntington Beach CA', 'Newport Beach CA',
+      'Costa Mesa CA', 'Fullerton CA', 'Orange CA', 'Mission Viejo CA', 'Garden Grove CA',
+      'San Diego CA', 'Carlsbad CA', 'Encinitas CA', 'Oceanside CA', 'Escondido CA',
+      'Chula Vista CA', 'La Jolla CA', 'Poway CA', 'El Cajon CA',
+      'Riverside CA', 'San Bernardino CA', 'Ontario CA', 'Rancho Cucamonga CA', 'Corona CA',
+      'Temecula CA', 'Murrieta CA', 'Redlands CA', 'Chino Hills CA', 'Palm Desert CA',
+      'Ventura CA', 'Oxnard CA', 'Thousand Oaks CA', 'Simi Valley CA', 'Santa Barbara CA',
+      'San Luis Obispo CA', 'Santa Cruz CA', 'Monterey CA', 'Salinas CA',
+      'San Francisco CA', 'San Mateo CA', 'Redwood City CA', 'Palo Alto CA', 'Menlo Park CA',
+      'San Jose CA', 'Santa Clara CA', 'Sunnyvale CA', 'Mountain View CA', 'Cupertino CA',
+      'Fremont CA', 'Los Gatos CA', 'Campbell CA',
+      'Oakland CA', 'Berkeley CA', 'Alameda CA', 'Hayward CA', 'Pleasanton CA',
+      'Dublin CA', 'Livermore CA', 'San Ramon CA', 'Walnut Creek CA', 'Concord CA',
+      'Santa Rosa CA', 'Petaluma CA', 'San Rafael CA', 'Napa CA', 'Vallejo CA', 'Fairfield CA',
+      'Sacramento CA', 'Roseville CA', 'Folsom CA', 'Elk Grove CA', 'Rocklin CA', 'Davis CA',
+      'Stockton CA', 'Modesto CA', 'Tracy CA', 'Fresno CA', 'Clovis CA', 'Visalia CA',
+      'Merced CA', 'Bakersfield CA', 'Redding CA', 'Chico CA', 'Eureka CA', 'Truckee CA',
+    ],
     places: CA_PLACES,
     gov: GOV('CA'),
     statewide: [
