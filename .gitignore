@@ -9,3 +9,7 @@ experiments/**/out/
 # California crawl cache (regenerable, large)
 .cache-ca/
 .DS_Store
+
+# Targeted FL/TN contact-enrichment caches (regenerable)
+.cache-fl/
+.cache-tn/

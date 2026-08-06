@@ -15,6 +15,7 @@ import { registrableDomain } from './search.js';
 import {
   readRows, nameIsConfirmed, peopleFor, candidatesFor, loadContactIndex, LOCATION_COLUMNS, REVIEW_COLUMNS,
 } from './reoon.js';
+import { looksLikePublisher, looksLikeNonFacilityOrg } from './finalize.js';
 
 // Exactly the reference columns, in the reference order. Nothing added.
 export const N8N_COLUMNS = [
@@ -75,7 +76,7 @@ export function fitNotes({ facility, person, kind, state, branches }) {
   if (facility['Number of Courts']) parts.push(`Published court count: ${facility['Number of Courts']}.`);
   if (branches && branches.length > 1) {
     parts.push(
-      `Operates ${branches.length} California locations: ` +
+      `Operates ${branches.length} ${state} locations: ` +
         `${branches.map((b) => b.city).filter(Boolean).join('; ')}.`,
     );
   }
@@ -101,7 +102,17 @@ export function fitNotes({ facility, person, kind, state, branches }) {
 }
 
 export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001', batch = 'CA-COURTS-20260805-B001' } = {}) {
-  const qualified = master.filter((r) => QUALIFIED.has(r['Qualification Status']));
+  // Publishers, chambers of commerce, tourism boards, realtors and generated
+  // directory networks are filtered here rather than in the master, so a
+  // developer-supplied master CSV can stay byte-identical while the outreach
+  // file still excludes organizations that operate no courts.
+  const excluded = [];
+  const qualified = master.filter((r) => {
+    if (!QUALIFIED.has(r['Qualification Status'])) return false;
+    if (looksLikePublisher(r)) { excluded.push({ ...r, why: 'publisher/media' }); return false; }
+    if (looksLikeNonFacilityOrg(r)) { excluded.push({ ...r, why: 'chamber/tourism/realty/directory' }); return false; }
+    return true;
+  });
   const review = master.filter((r) => r['Qualification Status'] === QUALIFICATION.NEEDS_REVIEW);
   const extraFor = (f) => contacts.get(registrableDomain(f.Website || '')) || null;
 
@@ -244,7 +255,8 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
     };
   });
 
-  return { rows, locationRows, reviewRows, stats };
+  stats.excluded = excluded;
+  return { rows, locationRows, reviewRows, stats, excluded };
 }
 
 // --------------------------------------------------------------------------
@@ -278,4 +290,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(`facilities w/ courts   : ${stats.withCourtCount}`);
   console.log(`no usable email        : ${stats.noEmail}`);
   console.log(`duplicate emails dropped: ${stats.dupes}`);
+  if (stats.excluded?.length) {
+    const by = stats.excluded.reduce((m, r) => ((m[r.why] = (m[r.why] || 0) + 1), m), {});
+    console.log(`excluded non-facilities : ${stats.excluded.length} ${JSON.stringify(by)}`);
+  }
 }

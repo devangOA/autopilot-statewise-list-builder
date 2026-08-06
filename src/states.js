@@ -116,6 +116,47 @@ const CA_PLACES = new Set(
   ]),
 );
 
+
+const FL_MARKETS = [
+  'Miami FL', 'Miami Beach FL', 'Coral Gables FL', 'Hialeah FL', 'Doral FL', 'Kendall FL',
+  'Fort Lauderdale FL', 'Hollywood FL', 'Pembroke Pines FL', 'Coral Springs FL', 'Plantation FL',
+  'Sunrise FL', 'Davie FL', 'Weston FL', 'Boca Raton FL', 'Delray Beach FL', 'Boynton Beach FL',
+  'West Palm Beach FL', 'Jupiter FL', 'Wellington FL', 'Palm Beach Gardens FL', 'Port St Lucie FL',
+  'Stuart FL', 'Vero Beach FL', 'Naples FL', 'Bonita Springs FL', 'Fort Myers FL', 'Cape Coral FL',
+  'Estero FL', 'Sarasota FL', 'Bradenton FL', 'Venice FL', 'Lakewood Ranch FL', 'Punta Gorda FL',
+  'Tampa FL', 'St Petersburg FL', 'Clearwater FL', 'Brandon FL', 'Riverview FL', 'Wesley Chapel FL',
+  'Lutz FL', 'Palm Harbor FL', 'Largo FL', 'Dunedin FL', 'Temple Terrace FL', 'Plant City FL',
+  'Orlando FL', 'Winter Park FL', 'Winter Garden FL', 'Kissimmee FL', 'Altamonte Springs FL',
+  'Lake Mary FL', 'Sanford FL', 'Oviedo FL', 'Clermont FL', 'Apopka FL', 'Ocoee FL', 'Celebration FL',
+  'Jacksonville FL', 'Jacksonville Beach FL', 'Ponte Vedra FL', 'St Augustine FL', 'Orange Park FL',
+  'Fleming Island FL', 'Fernandina Beach FL', 'Daytona Beach FL', 'Ormond Beach FL', 'Palm Coast FL',
+  'Melbourne FL', 'Palm Bay FL', 'Viera FL', 'Cocoa FL', 'Titusville FL', 'Merritt Island FL',
+  'Gainesville FL', 'Ocala FL', 'The Villages FL', 'Leesburg FL', 'Lady Lake FL',
+  'Tallahassee FL', 'Panama City FL', 'Destin FL', 'Fort Walton Beach FL', 'Pensacola FL',
+  'Niceville FL', 'Crestview FL', 'Santa Rosa Beach FL', 'Lakeland FL', 'Winter Haven FL',
+  'Sebring FL', 'Key West FL', 'Marathon FL', 'Homestead FL', 'Miramar FL', 'Aventura FL',
+];
+
+const TN_MARKETS = [
+  'Nashville TN', 'Franklin TN', 'Brentwood TN', 'Murfreesboro TN', 'Hendersonville TN',
+  'Smyrna TN', 'Mount Juliet TN', 'Gallatin TN', 'Spring Hill TN', 'Lebanon TN', 'Nolensville TN',
+  'Clarksville TN', 'Columbia TN', 'Dickson TN', 'Springfield TN', 'White House TN',
+  'Memphis TN', 'Germantown TN', 'Collierville TN', 'Bartlett TN', 'Cordova TN', 'Arlington TN',
+  'Millington TN', 'Jackson TN', 'Dyersburg TN', 'Union City TN', 'Martin TN',
+  'Knoxville TN', 'Farragut TN', 'Maryville TN', 'Alcoa TN', 'Oak Ridge TN', 'Sevierville TN',
+  'Pigeon Forge TN', 'Gatlinburg TN', 'Morristown TN', 'Jefferson City TN', 'Lenoir City TN',
+  'Chattanooga TN', 'Cleveland TN', 'East Ridge TN', 'Hixson TN', 'Ooltewah TN', 'Signal Mountain TN',
+  'Johnson City TN', 'Kingsport TN', 'Bristol TN', 'Elizabethton TN', 'Greeneville TN',
+  'Cookeville TN', 'Crossville TN', 'McMinnville TN', 'Tullahoma TN', 'Shelbyville TN',
+  'Manchester TN', 'Lawrenceburg TN', 'Pulaski TN', 'Fayetteville TN', 'Winchester TN',
+  'Sparta TN', 'Livingston TN', 'Athens TN', 'Sweetwater TN', 'Harriman TN', 'Kingston TN',
+];
+
+// Markets double as the municipality whitelist; `extra` adds neighbourhoods and
+// smaller towns that appear in addresses but are not worth querying separately.
+const placeSet = (markets, extra = []) =>
+  new Set(markets.map((m) => m.replace(/\s+[A-Z]{2}$/, '').toLowerCase()).concat(extra));
+
 export const STATES = {
   NY: {
     code: 'NY',
@@ -194,6 +235,82 @@ export const STATES = {
       'California multi-location indoor sports facility operator',
       'indoor basketball facility California list',
       'California futsal facilities indoor',
+    ],
+  },
+  FL: {
+    code: 'FL',
+    name: 'Florida',
+    stateRe: /(?:FL|Florida|Fla\.?)/,
+    // Florida ZIPs run 32000-34999.
+    zipRe: /\b(?:FL|Florida)\s+3[234]\d{3}\b/,
+    zipBare: /^3[234]\d{3}$/,
+    areaCodes:
+      /\(?(239|305|321|352|386|407|448|561|656|689|727|754|772|786|813|850|863|904|941|954)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\b(?:South|Central|North) Florida\b|\bFlorida\b/i,
+    markets: FL_MARKETS,
+    places: placeSet(FL_MARKETS, [
+      'south miami', 'north miami', 'north miami beach', 'miami lakes', 'miami gardens',
+      'coconut grove', 'brickell', 'pinecrest', 'palmetto bay', 'cutler bay', 'sunny isles beach',
+      'key biscayne', 'bal harbour', 'surfside', 'opa locka', 'hialeah gardens',
+      'deerfield beach', 'pompano beach', 'oakland park', 'wilton manors', 'lauderhill',
+      'tamarac', 'margate', 'coconut creek', 'parkland', 'cooper city', 'southwest ranches',
+      'lake worth', 'greenacres', 'royal palm beach', 'palm beach', 'north palm beach',
+      'tequesta', 'jensen beach', 'hobe sound', 'fort pierce', 'sebastian',
+      'marco island', 'immokalee', 'lehigh acres', 'north fort myers', 'fort myers beach',
+      'north port', 'englewood', 'nokomis', 'osprey', 'palmetto', 'ellenton', 'parrish',
+      'safety harbor', 'oldsmar', 'seminole', 'pinellas park', 'st pete beach', 'tarpon springs',
+      'new port richey', 'port richey', 'trinity', 'land o lakes', 'zephyrhills', 'valrico',
+      'maitland', 'longwood', 'casselberry', 'winter springs', 'st cloud', 'davenport',
+      'windermere', 'dr phillips', 'lake nona', 'mount dora', 'eustis', 'tavares',
+      'neptune beach', 'atlantic beach', 'middleburg', 'green cove springs', 'nocatee',
+      'port orange', 'new smyrna beach', 'deland', 'deltona', 'edgewater', 'flagler beach',
+      'indialantic', 'satellite beach', 'rockledge', 'cape canaveral', 'alachua', 'newberry',
+      'navarre', 'gulf breeze', 'milton', 'pace', 'panama city beach', 'marianna',
+      'bartow', 'auburndale', 'haines city', 'lake wales', 'avon park', 'okeechobee',
+      'islamorada', 'key largo',
+    ]),
+    gov: GOV('FL'),
+    statewide: [
+      'indoor pickleball facilities Florida directory',
+      'USTA Florida indoor tennis facilities',
+      'indoor sports complex Florida list',
+      'Florida volleyball clubs indoor facility list',
+      'indoor padel clubs Florida',
+      'best indoor pickleball courts Florida',
+      'sportsplex Florida',
+      'Florida YMCA gymnasium court rental',
+    ],
+  },
+  TN: {
+    code: 'TN',
+    name: 'Tennessee',
+    stateRe: /(?:TN|Tennessee|Tenn\.?)/,
+    // Tennessee ZIPs run 37000-38599.
+    zipRe: /\b(?:TN|Tennessee)\s+3[78]\d{3}\b/,
+    zipBare: /^3[78]\d{3}$/,
+    areaCodes: /\(?(423|615|629|731|865|901|931)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\b(?:East|Middle|West) Tennessee\b|\bTennessee\b/i,
+    markets: TN_MARKETS,
+    places: placeSet(TN_MARKETS, [
+      'antioch', 'bellevue', 'donelson', 'hermitage', 'madison', 'goodlettsville',
+      'green hills', 'belle meade', 'berry hill', 'thompsons station', 'arrington',
+      'fairview', 'ashland city', 'pleasant view', 'portland', 'la vergne',
+      'oakland', 'lakeland', 'somerville', 'covington', 'brownsville',
+      'powell', 'halls', 'karns', 'hardin valley', 'louisville', 'friendsville',
+      'seymour', 'dandridge', 'newport', 'rogersville', 'church hill', 'jonesborough',
+      'red bank', 'soddy daisy', 'collegedale', 'apison', 'lookout mountain',
+      'algood', 'baxter', 'monterey', 'smithville', 'woodbury', 'lynchburg',
+      'tellico village', 'loudon', 'clinton', 'norris', 'jacksboro',
+    ]),
+    gov: GOV('TN'),
+    statewide: [
+      'indoor pickleball facilities Tennessee directory',
+      'USTA Southern indoor tennis facilities Tennessee',
+      'indoor sports complex Tennessee list',
+      'Tennessee volleyball clubs indoor facility list',
+      'best indoor pickleball courts Tennessee',
+      'sportsplex Tennessee',
+      'Tennessee YMCA gymnasium court rental',
     ],
   },
 };

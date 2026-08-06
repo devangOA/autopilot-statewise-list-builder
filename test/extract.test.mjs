@@ -664,6 +664,51 @@ await check('organizations that operate no courts are excluded', () => {
   ]) assert.ok(!looksLikeNonFacilityOrg({ 'Facility Name': name, 'Email Domain': domain }), `${name} should be kept`);
 });
 
+await check('FL and TN state configs gate correctly', () => {
+  for (const st of ['FL', 'TN']) {
+    const c = stateConfig(st);
+    assert.ok(c.markets.length > 50, `${st} needs broad market coverage`);
+    assert.ok(c.places.size > 100);
+    assert.ok(c.gov.some((r) => r.test(`parks.${st.toLowerCase()}.us`)));
+  }
+  setActiveState('FL');
+  assert.equal(detectStateEvidence('123 Ocean Dr, Naples, FL 34102'), 'address');
+  assert.equal(detectStateEvidence('(239) 555-0100'), 'phone');
+  // Another state's address must never qualify a Florida facility.
+  assert.equal(detectStateEvidence('1 A St, Irvine, CA 92618'), '');
+  // 12345 is not a Florida ZIP, so the two letters alone are not enough.
+  assert.equal(detectStateEvidence('Somewhere, FL 12345'), '');
+  assert.equal(detectCity('123 Ocean Dr, Naples, FL 34102'), 'Naples');
+
+  setActiveState('TN');
+  assert.equal(detectStateEvidence('55 Broadway, Nashville, TN 37203'), 'address');
+  assert.equal(detectCity('55 Broadway, Nashville, TN 37203'), 'Nashville');
+  const b = detectAddresses('A: 100 Main St, Franklin, TN 37064. B: 200 Elm Ave, Knoxville, TN 37902');
+  assert.deepEqual(b.map((x) => x.city).sort(), ['Franklin', 'Knoxville']);
+
+  // Switching away must not leave state bleeding into the next run.
+  setActiveState('NY');
+  assert.equal(detectStateEvidence('55 Court St, Brooklyn, NY 11201'), 'address');
+  assert.equal(detectStateEvidence('123 Ocean Dr, Naples, FL 34102'), '');
+});
+await check('non-facility filtering happens in the candidate file, not the master', () => {
+  // A developer-supplied master must be usable byte-identical while the
+  // outreach file still drops organizations that operate no courts.
+  const master = [
+    { 'Facility Name': 'Real Club', Website: 'https://realclub.com/', City: 'Naples', State: 'FL',
+      'Facility Type': 'Racquet / Tennis Club', 'Sports Offered': 'tennis', 'Indoor Court Status': 'Indoor',
+      'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Email Domain': 'realclub.com',
+      'Shared Facility Email': 'info@realclub.com', 'Source URLs': 'https://realclub.com/', 'Research Notes': '' },
+    { 'Facility Name': 'Visit Anaheim', Website: 'https://visitanaheim.org/', City: 'Naples', State: 'FL',
+      'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Email Domain': 'visitanaheim.org',
+      'Shared Facility Email': 'info@visitanaheim.org', 'Source URLs': 'https://visitanaheim.org/', 'Research Notes': '' },
+  ];
+  const { rows, excluded } = buildN8n(master, new Map(), { state: 'FL', trackId: 'FL-COURTS-001' });
+  assert.equal(excluded.length, 1);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]['Company Name'], 'Real Club');
+});
+
 await browser.close();
 server.close();
 console.log(`\n${pass} checks passed${process.exitCode ? ' (with failures)' : ''}`);
