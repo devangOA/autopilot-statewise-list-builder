@@ -15,24 +15,26 @@ from the root `src/` are `geo.js`, `queries.js`, `extract.js`, and `search.js`
 
 ## Results
 
-Built 2026-08-05, both states crawled in parallel.
+Florida and Tennessee built 2026-08-05 (crawled in parallel); Texas built
+2026-08-06 (crawled solo at full concurrency).
 
-| | Florida | Tennessee |
-| --- | ---: | ---: |
-| Total facilities | **627** | **571** |
-| Confirmed Indoor | 138 | 123 |
-| Indoor and Outdoor | 188 | 215 |
-| Needs Review | 301 | 233 |
-| Sites crawled | 3,531 | 2,505 |
-| Distinct cities | 132 | 95 |
-| Published direct email | 145 | 160 |
-| Shared facility email | 217 | 151 |
-| Named decision maker + title | 114 | 116 |
-| At least one email (any kind) | 389 | 345 |
-| Explicit court count | 139 | 126 |
+| | Florida | Tennessee | Texas |
+| --- | ---: | ---: | ---: |
+| Total facilities | **627** | **571** | **1,150** |
+| Confirmed Indoor | 138 | 123 | 253 |
+| Indoor and Outdoor | 188 | 215 | 340 |
+| Needs Review | 301 | 233 | 557 |
+| Sites crawled | 3,531 | 2,505 | 3,409 |
+| Distinct cities | 132 | 95 | 185 |
+| Published direct email | 145 | 160 | 342 |
+| Shared facility email | 217 | 151 | 359 |
+| Named decision maker + title | 114 | 116 | 247 |
+| At least one email (any kind) | 389 | 345 | 717 |
+| Explicit court count | 139 | 126 | 276 |
 
 Outputs are the master CSVs at the repo root:
-`FLORIDA_INDOOR_COURT_FACILITIES.csv`, `TENNESSEE_INDOOR_COURT_FACILITIES.csv`.
+`FLORIDA_INDOOR_COURT_FACILITIES.csv`, `TENNESSEE_INDOOR_COURT_FACILITIES.csv`,
+`TEXAS_INDOOR_COURT_FACILITIES.csv`.
 
 As with the New York run, `Confirmed Indoor` carries some noise (the extractor
 keeps uncertain sites rather than dropping them — that is what `Needs Review`
