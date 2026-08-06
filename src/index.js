@@ -191,7 +191,7 @@ function buildRow(site, pages, meta = {}) {
   const monetized = looksMonetized(corpus);
   const retail = looksRetail(text);
   const stateEvidence = detectStateEvidence(text, STATE);
-  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence: stateEvidence });
+  const verdict = qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, stateEvidence, stateName: ST.name });
 
   const emails = extractEmails(text, html);
   const { shared, sharedAll, direct } = classifyEmails(emails, site.domain, name);

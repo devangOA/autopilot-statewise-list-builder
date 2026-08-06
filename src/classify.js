@@ -5,7 +5,13 @@ import { QUALIFICATION } from './schema.js';
  * ambiguous becomes `Needs Review` rather than being dropped, and a missing
  * court count never disqualifies a facility.
  */
-export function qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail, nyEvidence }) {
+export function qualify({
+  indoor, outdoor, outdoorOnly, excludedBy, monetized, sports, retail,
+  // `nyEvidence` is the original name, kept so existing callers keep working;
+  // `stateEvidence` is the state-neutral one.
+  stateEvidence, nyEvidence, stateName = 'in-state',
+}) {
+  const locationEvidence = stateEvidence !== undefined ? stateEvidence : nyEvidence;
   if (excludedBy) {
     return {
       status: QUALIFICATION.NOT_QUALIFIED,
@@ -27,13 +33,13 @@ export function qualify({ indoor, outdoor, outdoorOnly, excludedBy, monetized, s
       reason: 'No court sport mentioned on site.',
     };
   }
-  // `nyEvidence` is only enforced when the caller supplies it, so existing
-  // callers and fixtures that do not model location are unaffected.
-  if (nyEvidence === '') {
+  // Location is only enforced when the caller supplies it, so existing callers
+  // and fixtures that do not model location are unaffected.
+  if (locationEvidence === '') {
     return {
       status: QUALIFICATION.NOT_QUALIFIED,
       indoorStatus: 'Unknown',
-      reason: 'No New York address, ZIP or area code found; likely out of state.',
+      reason: `No ${stateName} address, ZIP or area code found; likely out of state.`,
     };
   }
   if (outdoorOnly || (outdoor && !indoor)) {
