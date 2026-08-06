@@ -126,6 +126,46 @@ export function looksLikePublisher(r) {
   return MASTHEAD_WEAK.test(name) && !FACILITY_WORD.test(name);
 }
 
+/**
+ * Organizations that rank for court queries but operate no courts.
+ *
+ * Each pattern here was confirmed against the real rows it removes, not
+ * guessed: chambers of commerce and tourism boards list local facilities,
+ * hotel groups and realtors mention courts as an amenity, and
+ * `pickleball<city>.com` is a generated directory network whose own pages read
+ * "Add Your Club", "Club Links" and "your guide to all things pickleball".
+ *
+ * Deliberately narrow. A hotel or resort that genuinely operates courts is not
+ * matched by the aggregator-only hotel patterns, and
+ * `pickleballclubsonomavalley.org` - a real member club - survives because the
+ * network is `.com` and lacks "club" in the domain.
+ */
+const NON_FACILITY_ORG = [
+  /\bchamber of commerce\b/i,
+  /\b(convention (and|&) )?visitors bureau\b/i,
+  /\btourism\b/i,
+  /\bthings to do\b/i,
+  /\btravel guide\b/i,
+  /\b(real estate|realty|realtor|homes for sale|luxury homes)\b/i,
+  /\bhotels? (and|&) resorts\b/i,
+  /\bhotels\d/i,
+];
+const NON_FACILITY_DOMAIN = [
+  /^visit[a-z]+\.(com|org|net)$/i,
+  /^(business\.)?[a-z]+chamber[a-z]*\.(com|org|net)$/i,
+  /tourism\./i,
+  // The generated directory network: bare `pickleball<city>.com` with no club
+  // token. Confirmed directory content on sampled members.
+  /^pickleball[a-z]+\.com$/i,
+];
+
+export function looksLikeNonFacilityOrg(r) {
+  const name = String(r['Facility Name'] || '');
+  const domain = apexDomain(r['Email Domain'] || r.Website || '');
+  if (NON_FACILITY_ORG.some((re) => re.test(name))) return true;
+  return NON_FACILITY_DOMAIN.some((re) => re.test(domain));
+}
+
 export function normalizeRow(row) {
   const r = stripForeignEmails({ ...row });
   const domain = mailDomain(r);
@@ -177,7 +217,9 @@ const ORDER = {
  * represents the same facility name elsewhere in the file.
  */
 export function finalize(rows) {
-  const normalized = rows.filter((r) => !looksLikePublisher(r)).map(normalizeRow);
+  const normalized = rows
+    .filter((r) => !looksLikePublisher(r) && !looksLikeNonFacilityOrg(r))
+    .map(normalizeRow);
 
   const byKey = new Map();
   const keep = (key, r) => {

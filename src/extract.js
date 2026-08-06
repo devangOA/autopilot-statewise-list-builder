@@ -605,7 +605,7 @@ function normalizeCity(s) {
 }
 
 // <title> segments that name a page rather than the business.
-const GENERIC_TITLE = /^(home|homepage|home page|welcome|index|main|start|untitled|official site|official website|site|page \d+)$/i;
+const GENERIC_TITLE = /^(public\s+)?(home|homepage|home page|welcome|index|main|start|untitled|official site|official website|site|page|page \d+|default)$/i;
 
 /**
  * Facility name from page metadata.
@@ -637,7 +637,11 @@ export function guessTitleFromName(html) {
   // First non-generic segment; a page labelled "Home | Sutton East Tennis"
   // should not be recorded as a facility called "Home".
   const named = segments.find((s) => !GENERIC_TITLE.test(s));
-  return (named || segments[0] || cleaned).trim();
+  // Every segment is a page label ("Home", "Welcome"): return nothing so the
+  // caller falls back to the search-result title or the domain. A facility
+  // called "Home" would otherwise be addressed that way in outreach.
+  if (!named) return '';
+  return named.trim();
 }
 
 /**

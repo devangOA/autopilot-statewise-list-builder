@@ -5,3 +5,7 @@ node_modules/
 experiments/**/.venv/
 experiments/**/*.log
 experiments/**/out/
+
+# California crawl cache (regenerable, large)
+.cache-ca/
+.DS_Store

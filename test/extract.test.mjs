@@ -16,7 +16,7 @@ import { qualify, isKeepable } from '../src/classify.js';
 import { QUALIFICATION } from '../src/schema.js';
 import { toCsv } from '../src/csv.js';
 import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDomain } from '../src/search.js';
-import { finalize, mailDomain, nameKey, looksLikePublisher } from '../src/finalize.js';
+import { finalize, mailDomain, nameKey, looksLikePublisher, looksLikeNonFacilityOrg } from '../src/finalize.js';
 import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
 import { validateFallback, RETRIEVAL } from '../src/fallback.js';
 import { N8N_COLUMNS, fitNotes, build as buildN8n } from '../src/n8n.js';
@@ -640,6 +640,28 @@ await check('browser-gone detection distinguishes a kill from a bad site', () =>
     'page.goto: Timeout 25000ms exceeded.',
     'page.goto: net::ERR_NAME_NOT_RESOLVED',
   ]) assert.ok(!BROWSER_GONE.test(m), `should be treated as a site failure: ${m}`);
+});
+
+await check('organizations that operate no courts are excluded', () => {
+  // Each of these was a real qualified row before the filter existed.
+  for (const [name, domain] of [
+    ['Livermore Valley Chamber of Commerce', 'business.livermorechamber.org'],
+    ['Visit Anaheim, CA', 'visitanaheim.org'],
+    ['Marin County Convention and Visitors Bureau', 'visitmarin.org'],
+    ['Placer Valley Tourism', 'placertourism.com'],
+    ['Four Seasons Hotels and Resorts', 'fourseasons.com'],
+    ['Madeline Schaider Real Estate', 'livinginmarin.com'],
+    // Generated directory network; its own pages say "Add Your Club".
+    ['Alhambra Pickleball', 'pickleballalhambra.com'],
+  ]) assert.ok(looksLikeNonFacilityOrg({ 'Facility Name': name, 'Email Domain': domain }), `${name} should be excluded`);
+
+  // Real facilities must survive, including a member club whose domain starts
+  // with "pickleball".
+  for (const [name, domain] of [
+    ['Pickleball Club Sonoma Valley', 'pickleballclubsonomavalley.org'],
+    ['Bay Club', 'bayclubs.com'],
+    ['LA Tennis Club', 'latennisclub.com'],
+  ]) assert.ok(!looksLikeNonFacilityOrg({ 'Facility Name': name, 'Email Domain': domain }), `${name} should be kept`);
 });
 
 await browser.close();
