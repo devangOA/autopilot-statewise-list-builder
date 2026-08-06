@@ -45,6 +45,12 @@ const USE_FALLBACK = process.argv.includes('--no-fallback') ? false : fallbackAv
 // major/minor tiering. Completed queries are still skipped via the cache, so
 // this executes exactly the angles tiering deferred and nothing else.
 const ALL_TEMPLATES = process.argv.includes('--all-templates');
+// Enrich what discovery has already found, without running more queries.
+// Search engines rate-limit collectively after a few hours; enrichment touches
+// facility sites instead, so running it first lets those limits decay and then
+// discovery resumes at full speed. Purely a reordering - the cached query list
+// is untouched and nothing is skipped permanently.
+const SKIP_DISCOVERY = process.argv.includes('--skip-discovery');
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -68,6 +74,11 @@ async function discover(browser) {
     return sites;
   }
 
+  if (SKIP_DISCOVERY) {
+    const cached = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : {};
+    log(`skipping discovery: enriching ${Object.keys(cached).length} already-discovered domains`);
+    return cached;
+  }
   const all = buildQueries({
     markets: ST.markets,
     majorMarkets: ALL_TEMPLATES ? null : ST.majorMarkets,
