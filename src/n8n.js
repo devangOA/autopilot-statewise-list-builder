@@ -40,6 +40,35 @@ export const N8N_COLUMNS = [
 
 const QUALIFIED = new Set([QUALIFICATION.CONFIRMED_INDOOR, QUALIFICATION.INDOOR_AND_OUTDOOR]);
 
+// Page furniture that is not a business name.
+const GENERIC_NAME = /^(public\s+)?(home|homepage|home page|welcome|index|main|start|untitled|site|page|default)\b/i;
+
+/**
+ * Best available company name, without inventing one.
+ *
+ * A site whose <title> is just "Home" would otherwise be addressed as a
+ * facility called Home in outreach. Preference order: the master's name, then
+ * the name the enrichment crawl extracted, then the domain rendered readably.
+ * Marketing lead-ins ("Welcome to", "Experience") and trailing taglines are
+ * trimmed, since those are decoration rather than the business name.
+ */
+export function resolveCompanyName(masterName, extra, website) {
+  const clean = (v) =>
+    String(v || '')
+      .replace(/^(welcome to|experience|the official (site|website) of)\s+/i, '')
+      .replace(/^www\./i, '')
+      .split(/\s+[|–—]\s+|\s+-\s+/)[0]
+      .replace(/\s+\d{4}$/, '')       // trailing year, e.g. "... Club 2022"
+      .trim();
+  for (const cand of [masterName, extra?.['Facility Name']]) {
+    const c = clean(cand);
+    if (c && c.length >= 3 && !GENERIC_NAME.test(c) && !/^[a-z0-9-]+\.[a-z]{2,}$/i.test(c)) return c;
+  }
+  // Last resort: the domain label, readable. Factual, never invented.
+  const label = registrableDomain(website || '').replace(/\.[a-z.]+$/, '').replace(/[^a-z0-9]+/gi, ' ').trim();
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : String(masterName || '');
+}
+
 function titleCase(s) {
   const t = String(s || '').trim();
   if (!t) return '';
@@ -63,7 +92,7 @@ function mapsUrl(name, city, state) {
  * a downstream prompt cannot mistake a permutation for a published address, and
  * nothing is described as verified before Reoon has actually seen it.
  */
-export function fitNotes({ facility, person, kind, state, branches }) {
+export function fitNotes({ facility, person, kind, state, branches, upgraded }) {
   const parts = [];
   const where = [facility.City, state].filter(Boolean).join(', ');
   parts.push(
@@ -92,6 +121,11 @@ export function fitNotes({ facility, person, kind, state, branches }) {
   }
 
   parts.push(`Research note: ${facility['Qualification Status']}.`);
+  if (upgraded) {
+    parts.push(
+      'Indoor status was resolved on a second, deeper crawl of this site; the first pass left it unconfirmed.',
+    );
+  }
   parts.push(
     kind === 'guessed'
       ? 'Email status: GUESSED PATTERN - not a published address. It is an unverified permutation of the confirmed name against the company domain and must be verified before sending.'
@@ -99,6 +133,62 @@ export function fitNotes({ facility, person, kind, state, branches }) {
   );
   if (facility['Source URLs']) parts.push(`Sources: ${facility['Source URLs']}`);
   return parts.join(' ');
+}
+
+/**
+ * Promote facilities a re-verification pass resolved.
+ *
+ * The first crawl leaves a facility as Needs Review when its site never states
+ * indoor or outdoor. A deeper pass over more pages sometimes finds the
+ * statement, and this applies that result **in memory only** -- the
+ * developer-supplied master CSV on disk is never rewritten. The upgrade is
+ * recorded in Research Notes so it is auditable rather than silent.
+ */
+export function applyUpgrades(master, upgradeRows) {
+  if (!upgradeRows?.length) return { master, upgraded: 0 };
+  const byUrl = new Map();
+  for (const u of upgradeRows) {
+    if (!QUALIFIED.has(u['Qualification Status'])) continue;
+    const k = registrableDomain(u.Website || '');
+    if (k) byUrl.set(k, u);
+  }
+  let upgraded = 0;
+  const out = master.map((r) => {
+    if (r['Qualification Status'] !== QUALIFICATION.NEEDS_REVIEW) return r;
+    const u = byUrl.get(registrableDomain(r.Website || ''));
+    if (!u) return r;
+    upgraded++;
+    return {
+      ...r,
+      'Qualification Status': u['Qualification Status'],
+      'Indoor Court Status': u['Indoor Court Status'] || r['Indoor Court Status'],
+      'Sports Offered': u['Sports Offered'] || r['Sports Offered'],
+      'Number of Courts': r['Number of Courts'] || u['Number of Courts'],
+      'Court Count Notes': r['Court Count Notes'] || u['Court Count Notes'],
+      'Source URLs': u['Source URLs'] || r['Source URLs'],
+      'Research Notes': `${r['Research Notes'] || ''} Upgraded from Needs Review on re-verification: indoor evidence found on a deeper crawl of this site.`.trim(),
+    };
+  });
+  return { master: out, upgraded };
+}
+
+/**
+ * Reject a facility whose only tie to the state is the word appearing on the
+ * page.
+ *
+ * The location gate accepts four tiers of evidence: address, ZIP, phone, and a
+ * bare mention. The first three are positive identification. A mention is not:
+ * a Michigan country club that lists a Texas tournament, a national directory,
+ * or a league covering every state all "mention" Texas. Those rows are
+ * recognisable because no address was found, so no city was parsed either.
+ *
+ * Requiring a mention to be corroborated by a parsed city keeps genuine
+ * facilities that simply phrase their address unusually, while dropping the
+ * out-of-state and national organizations.
+ */
+export function weakLocationEvidence(r, state) {
+  const m = new RegExp(`${state} location evidence: (\\w+)`).exec(r['Research Notes'] || '');
+  return m?.[1] === 'mention' && !String(r.City || '').trim();
 }
 
 export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001', batch = 'CA-COURTS-20260805-B001' } = {}) {
@@ -111,6 +201,7 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
     if (!QUALIFIED.has(r['Qualification Status'])) return false;
     if (looksLikePublisher(r)) { excluded.push({ ...r, why: 'publisher/media' }); return false; }
     if (looksLikeNonFacilityOrg(r)) { excluded.push({ ...r, why: 'chamber/tourism/realty/directory' }); return false; }
+    if (weakLocationEvidence(r, state)) { excluded.push({ ...r, why: 'state named on page but no address or city' }); return false; }
     return true;
   });
   const review = master.filter((r) => r['Qualification Status'] === QUALIFICATION.NEEDS_REVIEW);
@@ -195,7 +286,7 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
       rows.push({
         'Track ID': trackId,
         Batch: batch,
-        'Company Name': f['Facility Name'],
+        'Company Name': resolveCompanyName(f['Facility Name'], extra, f.Website),
         Website: f.Website,
         Address: address,
         Phone: '', // not collected by this pipeline; left blank rather than guessed
@@ -209,7 +300,7 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
         'Work Email': kind === 'generic' ? email : '',
         'Final Email': email,
         'Email Source': c.type,
-        'Fit Notes': fitNotes({ facility: f, person, kind, state, branches: locs }),
+        'Fit Notes': fitNotes({ facility: { ...f, 'Facility Name': resolveCompanyName(f['Facility Name'], extra, f.Website) }, person, kind, state, branches: locs, upgraded: /Upgraded from Needs Review/.test(f['Research Notes'] || '') }),
       });
     }
 
@@ -266,8 +357,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : d;
   };
   const state = arg('state', 'CA');
-  const master = readRows(arg('in', 'CALIFORNIA_INDOOR_COURT_FACILITIES.csv'));
+  let master = readRows(arg('in', 'CALIFORNIA_INDOOR_COURT_FACILITIES.csv'));
   const contacts = loadContactIndex(arg('contacts', '.cache-ca/rows.json'));
+  const upgradeFile = arg('upgrades', '');
+  let upgraded = 0;
+  if (upgradeFile && fs.existsSync(upgradeFile)) {
+    ({ master, upgraded } = applyUpgrades(master, JSON.parse(fs.readFileSync(upgradeFile, 'utf8'))));
+  }
   const { rows, locationRows, reviewRows, stats } = build(master, contacts, {
     state,
     trackId: arg('track-id', `${state}-COURTS-001`),
@@ -281,6 +377,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   console.log(`qualified facilities   : ${stats.qualified} (Confirmed Indoor ${stats.confirmedIndoor}, Indoor+Outdoor ${stats.indoorOutdoor})`);
   console.log(`needs review           : ${stats.review}`);
+  if (upgraded) console.log(`upgraded from review   : ${upgraded} (re-verification found indoor evidence)`);
   console.log(`branch locations       : ${locationRows.length} (multi-site operators ${stats.multiSite})`);
   console.log(`named people           : ${stats.people} (facilities with >1 contact ${stats.multiContact})`);
   console.log(`n8n rows               : ${rows.length}`);

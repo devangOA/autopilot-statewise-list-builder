@@ -51,6 +51,9 @@ const ALL_TEMPLATES = process.argv.includes('--all-templates');
 // discovery resumes at full speed. Purely a reordering - the cached query list
 // is untouched and nothing is skipped permanently.
 const SKIP_DISCOVERY = process.argv.includes('--skip-discovery');
+// Re-verification pass: fetch more pages, biased toward ones that state
+// indoor/outdoor, for facilities the first crawl left as Needs Review.
+const DEEP = process.argv.includes('--deep');
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -280,7 +283,7 @@ async function enrichSite(page, site) {
   if (!home) throw lastErr;
 
   const pages = [home];
-  for (const sub of pickSubpages(home.links, site.domain, 6)) {
+  for (const sub of pickSubpages(home.links, site.domain, DEEP ? 12 : 6, DEEP)) {
     try {
       pages.push(await fetchPage(page, sub, { timeout: 20000 }));
     } catch {

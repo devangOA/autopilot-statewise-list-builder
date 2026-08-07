@@ -152,6 +152,41 @@ const TN_MARKETS = [
   'Sparta TN', 'Livingston TN', 'Athens TN', 'Sweetwater TN', 'Harriman TN', 'Kingston TN',
 ];
 
+
+const TX_MARKETS = [
+  // Houston metro
+  'Houston TX', 'Katy TX', 'Sugar Land TX', 'Pearland TX', 'The Woodlands TX',
+  'Spring TX', 'Cypress TX', 'Humble TX', 'Kingwood TX', 'Missouri City TX',
+  'Friendswood TX', 'League City TX', 'Pasadena TX', 'Baytown TX', 'Conroe TX',
+  'Richmond TX', 'Tomball TX', 'Stafford TX', 'Bellaire TX', 'Galveston TX',
+  // Dallas-Fort Worth metroplex
+  'Dallas TX', 'Fort Worth TX', 'Plano TX', 'Frisco TX', 'McKinney TX',
+  'Allen TX', 'Richardson TX', 'Garland TX', 'Irving TX', 'Arlington TX',
+  'Grapevine TX', 'Southlake TX', 'Colleyville TX', 'Keller TX', 'Coppell TX',
+  'Carrollton TX', 'Lewisville TX', 'Flower Mound TX', 'Denton TX', 'Rockwall TX',
+  'Mansfield TX', 'Grand Prairie TX', 'Mesquite TX', 'Wylie TX', 'Prosper TX',
+  'Little Elm TX', 'The Colony TX', 'Euless TX', 'Bedford TX', 'North Richland Hills TX',
+  'Addison TX', 'Farmers Branch TX', 'Duncanville TX', 'Cedar Hill TX', 'Waxahachie TX',
+  // Austin metro
+  'Austin TX', 'Round Rock TX', 'Cedar Park TX', 'Georgetown TX', 'Pflugerville TX',
+  'Leander TX', 'Lakeway TX', 'Buda TX', 'Kyle TX', 'San Marcos TX', 'Bastrop TX',
+  // San Antonio metro
+  'San Antonio TX', 'New Braunfels TX', 'Schertz TX', 'Boerne TX', 'Converse TX',
+  'Universal City TX', 'Seguin TX', 'Helotes TX', 'Cibolo TX',
+  // Gulf Coast & South Texas
+  'Corpus Christi TX', 'Victoria TX', 'Brownsville TX', 'McAllen TX', 'Harlingen TX',
+  'Edinburg TX', 'Mission TX', 'Pharr TX', 'Laredo TX', 'Beaumont TX',
+  'Port Arthur TX', 'Texas City TX', 'Lake Jackson TX',
+  // West Texas & Panhandle
+  'El Paso TX', 'Lubbock TX', 'Amarillo TX', 'Midland TX', 'Odessa TX',
+  'San Angelo TX', 'Abilene TX', 'Big Spring TX', 'Plainview TX', 'Canyon TX',
+  // East & Central Texas
+  'Tyler TX', 'Longview TX', 'Waco TX', 'Temple TX', 'Killeen TX', 'Bryan TX',
+  'College Station TX', 'Huntsville TX', 'Nacogdoches TX', 'Texarkana TX',
+  'Sherman TX', 'Paris TX', 'Marshall TX', 'Lufkin TX', 'Brenham TX',
+  'Wichita Falls TX', 'Copperas Cove TX', 'Harker Heights TX', 'Belton TX',
+];
+
 // Markets double as the municipality whitelist; `extra` adds neighbourhoods and
 // smaller towns that appear in addresses but are not worth querying separately.
 const placeSet = (markets, extra = []) =>
@@ -311,6 +346,57 @@ export const STATES = {
       'best indoor pickleball courts Tennessee',
       'sportsplex Tennessee',
       'Tennessee YMCA gymnasium court rental',
+    ],
+  },
+  TX: {
+    code: 'TX',
+    name: 'Texas',
+    stateRe: /(?:TX|Texas|Tex\.?)/,
+    // Texas ZIPs run 75000-79999, plus the 885xx block around El Paso.
+    zipRe: /\b(?:TX|Texas)\s+(?:7[5-9]\d{3}|885\d{2})\b/,
+    zipBare: /^(?:7[5-9]\d{3}|885\d{2})$/,
+    areaCodes:
+      /\(?(210|214|254|281|325|346|361|409|430|432|469|512|682|713|726|737|806|817|830|832|903|915|936|940|945|956|972|979)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\b(?:East|West|North|South|Central) Texas\b|\bTexas\b/i,
+    markets: TX_MARKETS,
+    places: placeSet(TX_MARKETS, [
+      'westchase', 'memorial', 'river oaks', 'montrose', 'heights', 'midtown',
+      'clear lake', 'webster', 'seabrook', 'deer park', 'la porte', 'channelview',
+      'atascocita', 'porter', 'magnolia', 'montgomery', 'willis', 'rosenberg',
+      'fulshear', 'brookshire', 'santa fe', 'dickinson', 'alvin', 'angleton',
+      'highland park', 'university park', 'preston hollow', 'oak lawn', 'deep ellum',
+      'trophy club', 'roanoke', 'argyle', 'justin', 'haslet', 'saginaw', 'watauga',
+      'hurst', 'crowley', 'burleson', 'midlothian', 'red oak', 'ennis', 'corsicana',
+      'sachse', 'murphy', 'lucas', 'fairview', 'melissa', 'anna', 'princeton',
+      'celina', 'aubrey', 'sanger', 'krum', 'ponder', 'forney', 'terrell',
+      'westlake hills', 'rollingwood', 'bee cave', 'dripping springs', 'manor',
+      'hutto', 'taylor', 'liberty hill', 'jarrell', 'elgin', 'lockhart',
+      'alamo heights', 'stone oak', 'leon valley', 'live oak', 'selma', 'bulverde',
+      'canyon lake', 'floresville', 'pleasanton', 'castroville', 'fair oaks ranch',
+      'portland', 'rockport', 'kingsville', 'alice', 'weslaco', 'san benito',
+      'los fresnos', 'rio grande city', 'eagle pass', 'del rio', 'nederland',
+      'orange', 'vidor', 'silsbee', 'socorro', 'horizon city', 'fabens',
+      'wolfforth', 'levelland', 'brownfield', 'pampa', 'borger', 'hereford',
+      'dumas', 'andrews', 'pecos', 'fort stockton', 'alpine', 'monahans',
+      'whitehouse', 'lindale', 'kilgore', 'henderson', 'jacksonville', 'athens',
+      'hewitt', 'woodway', 'robinson', 'mcgregor', 'gatesville', 'salado',
+      'navasota', 'madisonville', 'crockett', 'palestine', 'mount pleasant',
+      'sulphur springs', 'greenville', 'commerce', 'bonham', 'gainesville',
+      'burkburnett', 'iowa park', 'vernon', 'graham', 'mineral wells', 'weatherford',
+      'granbury', 'stephenville', 'cleburne', 'joshua', 'alvarado', 'glen rose',
+    ]),
+    gov: GOV('TX'),
+    statewide: [
+      'indoor pickleball facilities Texas directory',
+      'USTA Texas indoor tennis facilities',
+      'indoor sports complex Texas list',
+      'Texas volleyball clubs indoor facility list',
+      'Texas badminton clubs list',
+      'indoor padel clubs Texas',
+      'best indoor pickleball courts Texas',
+      'sportsplex Texas',
+      'Texas YMCA gymnasium court rental',
+      'indoor basketball facility Texas list',
     ],
   },
 };

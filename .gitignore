@@ -13,3 +13,7 @@ experiments/**/out/
 # Targeted FL/TN contact-enrichment caches (regenerable)
 .cache-fl/
 .cache-tn/
+
+# Texas caches (regenerable)
+.cache-tx/
+.cache-txreview/

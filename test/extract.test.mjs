@@ -19,7 +19,7 @@ import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDo
 import { finalize, mailDomain, nameKey, looksLikePublisher, looksLikeNonFacilityOrg } from '../src/finalize.js';
 import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
 import { validateFallback, RETRIEVAL } from '../src/fallback.js';
-import { N8N_COLUMNS, fitNotes, build as buildN8n } from '../src/n8n.js';
+import { N8N_COLUMNS, fitNotes, build as buildN8n, weakLocationEvidence, resolveCompanyName } from '../src/n8n.js';
 import { setActiveState, detectStateEvidence } from '../src/extract.js';
 import { stateConfig } from '../src/states.js';
 import { buildQueries, CORE_TEMPLATES, TEMPLATES } from '../src/queries.js';
@@ -707,6 +707,28 @@ await check('non-facility filtering happens in the candidate file, not the maste
   assert.equal(excluded.length, 1);
   assert.equal(rows.length, 1);
   assert.equal(rows[0]['Company Name'], 'Real Club');
+});
+
+await check('a bare state mention is not proof of location', () => {
+  // Kalamazoo Country Club (Michigan) qualified for Texas because its page
+  // mentioned "Texas"; no address was found, so no city was parsed either.
+  assert.ok(weakLocationEvidence(
+    { 'Research Notes': 'Both indoor and outdoor found. TX location evidence: mention.', City: '' }, 'TX'));
+  // An address, ZIP or phone is positive identification and always survives.
+  for (const tier of ['address', 'zip', 'phone']) {
+    assert.ok(!weakLocationEvidence({ 'Research Notes': `TX location evidence: ${tier}.`, City: '' }, 'TX'));
+  }
+  // A mention corroborated by a parsed city is kept.
+  assert.ok(!weakLocationEvidence(
+    { 'Research Notes': 'TX location evidence: mention.', City: 'Frisco' }, 'TX'));
+});
+await check('company names never come from page furniture', () => {
+  // A site titled "Home" would otherwise be addressed as a facility called Home.
+  assert.equal(resolveCompanyName('Home', { 'Facility Name': 'greenhill.org' }, 'https://www.greenhill.org/'), 'Greenhill');
+  assert.equal(resolveCompanyName('Public Home', { 'Facility Name': 'The Amarillo Country Club 2022' }, 'https://theamarillocountryclub.com/'), 'The Amarillo Country Club');
+  assert.equal(resolveCompanyName('Welcome to Kingwood Texas', {}, 'https://kingwood.com/'), 'Kingwood Texas');
+  // A real name is never rewritten.
+  assert.equal(resolveCompanyName('Empire Racquet Club', {}, 'https://empireracquet.com/'), 'Empire Racquet Club');
 });
 
 await browser.close();

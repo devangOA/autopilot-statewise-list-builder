@@ -122,7 +122,15 @@ const SUBPAGE_HINTS = [
   /membership/i, /facilit/i, /courts?/i, /rentals?/i, /programs?/i, /athletics/i,
 ];
 
-export function pickSubpages(links, baseHost, max = 6) {
+// Pages most likely to state indoor/outdoor explicitly. Used by the
+// re-verification pass, which fetches more pages than the first crawl.
+const DEEP_HINTS = [
+  /facilit/i, /amenit/i, /courts?/i, /gym/i, /indoor/i, /our[-\s]?club/i,
+  /faq/i, /hours/i, /visit/i, /about/i, /member/i, /rental/i, /play/i, /pricing/i,
+  /tour/i, /location/i,
+];
+
+export function pickSubpages(links, baseHost, max = 6, deep = false) {
   const seen = new Set();
   const out = [];
   for (const { href, text } of links) {
@@ -137,7 +145,8 @@ export function pickSubpages(links, baseHost, max = 6) {
     const key = u.origin + u.pathname.replace(/\/$/, '');
     if (seen.has(key)) continue;
     const hay = `${u.pathname} ${text}`;
-    if (!SUBPAGE_HINTS.some((h) => h.test(hay))) continue;
+    const hints = deep ? DEEP_HINTS : SUBPAGE_HINTS;
+    if (!hints.some((h) => h.test(hay))) continue;
     seen.add(key);
     out.push(key);
     if (out.length >= max) break;
@@ -360,7 +369,14 @@ export function extractPeople(text) {
 // Indoor signals, sports, court counts
 // ---------------------------------------------------------------------------
 
-const INDOOR_RE = /\b(indoor|indoors|climate[-\s]?controlled|air[-\s]?conditioned courts?|under (?:one )?roof|domed?|bubble|field ?house|fieldhouse|inside courts?)\b/i;
+// Indoor evidence. The second group was added for the re-verification pass over
+// facilities whose sites never used the word "indoor": each term is unambiguous
+// on its own -- a gymnasium is enclosed by definition, hardwood and sprung
+// floors do not survive outdoors, and an air-supported structure is a dome.
+// Deliberately excluded: "year-round play", which an outdoor Sun Belt facility
+// can claim truthfully.
+const INDOOR_RE =
+  /\b(indoor|indoors|climate[-\s]?controlled|temperature[-\s]?controlled|air[-\s]?conditioned courts?|under (?:one )?roof|domed?|bubble|field ?house|fieldhouse|inside courts?|gymnasium|gymnasiums|hardwood courts?|sprung floors?|air[-\s]?supported|fully enclosed|rain or shine|regardless of (?:the )?weather|no matter the weather)\b/i;
 const OUTDOOR_RE = /\b(outdoor|outdoors|open[-\s]air)\b/i;
 const OUTDOOR_ONLY_RE = /\boutdoor[-\s]only\b/i;
 
