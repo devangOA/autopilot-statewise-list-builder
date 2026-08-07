@@ -229,8 +229,13 @@ export function peopleFor(master, extra) {
 // branch inbox; without a cap one facility contributes hundreds of rows, and
 // verification is billed per address. Person-attributed addresses are never
 // capped -- those are the contacts actually worth having.
-const MAX_UNATTRIBUTED_DIRECT = 3;
-const MAX_SHARED = 3;
+// Raised from 3/3: verification weeds out the bad addresses anyway, so the
+// binding constraint is having enough candidates to weed. Still capped, and
+// still ranked person-like and role-like first, so a university staff roster
+// cannot flood the file the way an uncapped list once did (221 addresses from
+// one athletics site).
+const MAX_UNATTRIBUTED_DIRECT = 6;
+const MAX_SHARED = 4;
 
 // Role words that make an unattributed address worth verifying.
 const ROLE_LOCALPART =

@@ -432,7 +432,7 @@ await check('a staff roster cannot flood the verification file', () => {
     { 'Email Domain': 'uni.edu' },
     { _people: [], _directEmails: many, _sharedEmails: [] },
   );
-  assert.ok(c.length <= 3, `expected the cap to hold, got ${c.length}`);
+  assert.ok(c.length <= 6, `expected the cap to hold, got ${c.length}`);
 });
 
 // ---- Scrapling fallback safety guards ------------------------------------
