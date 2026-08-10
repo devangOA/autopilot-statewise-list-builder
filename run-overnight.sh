@@ -48,7 +48,7 @@ console.log('needs-review sites to re-verify:', urls.length);
   fi
   say "$CODE phase 2 done"
 
-  say "$CODE phase 3/3  building deliverables + commit + push"
+  say "$CODE phase 3/3  building deliverables + commit"
   node src/n8n.js --state "$CODE" \
     --in "${UPPER}_INDOOR_COURT_FACILITIES.csv" \
     --contacts ".cache-${LOWER}/rows.json" \
@@ -68,8 +68,7 @@ every candidate domain, then a deeper re-verification pass over the
 facilities the first crawl left as Needs Review.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" >> "$LOG" 2>&1
-  git push -u origin "$(git rev-parse --abbrev-ref HEAD)" >> "$LOG" 2>&1
-  say "===== $NAME complete ====="
+  say "===== $NAME complete (committed locally; push handled separately) ====="
 }
 
 say "########## OVERNIGHT RUN STARTING: WA -> AZ -> NV -> OR ##########"
