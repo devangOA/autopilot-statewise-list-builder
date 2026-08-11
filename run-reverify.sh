@@ -1,31 +1,22 @@
 #!/bin/bash
-# Unattended sequential run: Washington, Arizona, Nevada, Oregon.
-# One state at a time (shared search-engine rate limits punish running two at
-# once from the same IP). Each state: discovery+enrichment -> needs-review
-# re-verification -> build deliverables -> commit -> push. Fully resumable:
-# every phase reads its own cache, so killing this script only costs the
-# minutes since the last checkpoint, never the whole state.
+# Catch-up run: phase 1 (discovery+enrichment) already completed and is cached
+# for WA/AZ/NV/OR. This runs only phase 2 (needs-review re-verification, which
+# silently no-op'd due to a /tmp path bug) and phase 3 (rebuild deliverables
+# with the --upgrades pass, then commit) for each.
 set -u
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO" || exit 1
 export PATH="/c/Program Files/nodejs:$PATH"
-LOG="$REPO/overnight.log"
+LOG="$REPO/reverify.log"
 BATCHDATE=20260810
 
 say() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
-run_state() {
+reverify_state() {
   local CODE=$1 NAME=$2 UPPER=$3
   local LOWER; LOWER=$(echo "$CODE" | tr 'A-Z' 'a-z')
 
-  say "===== $NAME ($CODE) starting ====="
-
-  say "$CODE phase 1/3  discovery + enrichment"
-  node src/index.js --state "$CODE" --all-templates \
-    --out "${UPPER}_INDOOR_COURT_FACILITIES.csv" \
-    --cache ".cache-${LOWER}" \
-    --discovery-concurrency 3 --concurrency 2 >> "$LOG" 2>&1
-  say "$CODE phase 1 done"
+  say "===== $NAME ($CODE) re-verification starting ====="
 
   say "$CODE phase 2/3  needs-review re-verification"
   node -e "
@@ -49,7 +40,7 @@ console.log('needs-review sites to re-verify:', urls.length);
   fi
   say "$CODE phase 2 done"
 
-  say "$CODE phase 3/3  building deliverables + commit"
+  say "$CODE phase 3/3  rebuilding deliverables with upgrades + commit"
   node src/n8n.js --state "$CODE" \
     --in "${UPPER}_INDOOR_COURT_FACILITIES.csv" \
     --contacts ".cache-${LOWER}/rows.json" \
@@ -57,26 +48,32 @@ console.log('needs-review sites to re-verify:', urls.length);
     --out "${CODE}_INDOOR_COURTS_N8N_READY_WITH_CANDIDATE_EMAILS.csv" \
     --locations "${CODE}_INDOOR_COURTS_LOCATIONS.csv" \
     --review "${CODE}_INDOOR_COURTS_NEEDS_REVIEW.csv" \
-    --track-id "${CODE}-COURTS-001" --batch "${CODE}-COURTS-${BATCHDATE}-B001" >> "$LOG" 2>&1
+    --track-id "${CODE}-COURTS-001" --batch "${CODE}-COURTS-${BATCHDATE}-B002" >> "$LOG" 2>&1
 
   git add "${UPPER}_INDOOR_COURT_FACILITIES.csv" \
     "${CODE}_INDOOR_COURTS_N8N_READY_WITH_CANDIDATE_EMAILS.csv" \
     "${CODE}_INDOOR_COURTS_LOCATIONS.csv" "${CODE}_INDOOR_COURTS_NEEDS_REVIEW.csv" 2>>"$LOG"
-  git commit -q -m "Add ${NAME} indoor-court dataset and n8n candidate-email CSV
+  if ! git diff --cached --quiet 2>>"$LOG"; then
+    git commit -q -m "Re-verify ${NAME} Needs Review facilities with a deeper crawl
 
-Full statewide crawl: discovery across every ${NAME} market, enrichment of
-every candidate domain, then a deeper re-verification pass over the
-facilities the first crawl left as Needs Review.
+The first pass over ${NAME} never actually ran its needs-review
+re-verification step (a /tmp path bug on Windows made it silently no-op).
+This re-runs it: a 12-page, indoor-focused re-crawl of every remaining
+Needs Review facility, promoting any that now show indoor/outdoor evidence
+into the qualified deliverable and rebuilding the candidate-email CSV.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" >> "$LOG" 2>&1
-  say "===== $NAME complete (committed locally; push handled separately) ====="
+    say "===== $NAME re-verification complete, committed ====="
+  else
+    say "===== $NAME re-verification complete, nothing changed ====="
+  fi
 }
 
-say "########## OVERNIGHT RUN STARTING: WA -> AZ -> NV -> OR ##########"
+say "########## RE-VERIFICATION CATCH-UP: WA -> AZ -> NV -> OR ##########"
 
-run_state WA Washington WASHINGTON
-run_state AZ Arizona ARIZONA
-run_state NV Nevada NEVADA
-run_state OR Oregon OREGON
+reverify_state WA Washington WASHINGTON
+reverify_state AZ Arizona ARIZONA
+reverify_state NV Nevada NEVADA
+reverify_state OR Oregon OREGON
 
-say "########## ALL FOUR STATES COMPLETE ##########"
+say "########## RE-VERIFICATION CATCH-UP COMPLETE ##########"
