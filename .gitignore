@@ -17,3 +17,15 @@ experiments/**/out/
 # Texas caches (regenerable)
 .cache-tx/
 .cache-txreview/
+
+# Washington / Arizona / Nevada / Oregon caches (regenerable)
+.cache-wa/
+.cache-wareview/
+.cache-az/
+.cache-azreview/
+.cache-nv/
+.cache-nvreview/
+.cache-or/
+.cache-orreview/
+
+overnight.log

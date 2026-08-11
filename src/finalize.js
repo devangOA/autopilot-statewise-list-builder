@@ -271,7 +271,7 @@ export function finalize(rows) {
 // CLI: re-apply finalization to a cached run without re-crawling.
 //   node src/finalize.js [--cache .cache] [--out FILE]
 // ---------------------------------------------------------------------------
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href) {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const { COLUMNS } = await import('./schema.js');

@@ -457,7 +457,7 @@ export function build(master, contacts = new Map(), statePrefix = '') {
 }
 
 // --------------------------------------------------------------------------
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href) {
   const arg = (n, d) => {
     const i = process.argv.indexOf(`--${n}`);
     return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : d;
