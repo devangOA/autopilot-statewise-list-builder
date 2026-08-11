@@ -21,13 +21,19 @@ experiments/**/out/
 # Washington / Arizona / Nevada / Oregon caches (regenerable)
 .cache-wa/
 .cache-wareview/
+.cache-wawide/
 .cache-az/
 .cache-azreview/
+.cache-azwide/
 .cache-nv/
 .cache-nvreview/
+.cache-nvwide/
 .cache-or/
 .cache-orreview/
+.cache-orwide/
 
 overnight.log
 reverify.log
+fillgaps.log
+widecrawl.log
 .tmp/
