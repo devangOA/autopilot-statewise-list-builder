@@ -32,8 +32,26 @@ experiments/**/out/
 .cache-orreview/
 .cache-orwide/
 
+# Illinois / Georgia / Indiana / North Carolina / South Carolina caches (regenerable)
+.cache-il/
+.cache-ilreview/
+.cache-ilwide/
+.cache-ga/
+.cache-gareview/
+.cache-gawide/
+.cache-in/
+.cache-inreview/
+.cache-inwide/
+.cache-nc/
+.cache-ncreview/
+.cache-ncwide/
+.cache-sc/
+.cache-screview/
+.cache-scwide/
+
 overnight.log
 reverify.log
 fillgaps.log
 widecrawl.log
+batch.log
 .tmp/
