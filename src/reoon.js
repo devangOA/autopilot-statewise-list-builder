@@ -183,8 +183,10 @@ export function nameIsConfirmed(first, last) {
  * decides *who* to contact there.
  */
 export function loadContactIndex(file) {
-  if (!fs.existsSync(file)) return new Map();
-  const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const files = Array.isArray(file) ? file : [file];
+  const rows = files
+    .filter((f) => f && fs.existsSync(f))
+    .flatMap((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
   const idx = new Map();
   for (const r of rows) {
     const key = registrableDomain(r.Website || '');

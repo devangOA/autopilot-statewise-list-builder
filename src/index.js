@@ -54,6 +54,12 @@ const SKIP_DISCOVERY = process.argv.includes('--skip-discovery');
 // Re-verification pass: fetch more pages, biased toward ones that state
 // indoor/outdoor, for facilities the first crawl left as Needs Review.
 const DEEP = process.argv.includes('--deep');
+// Contact-yield pass: fetch more pages than the default 6, but keep the
+// contact-oriented hint list (unlike --deep, which switches to indoor-
+// evidence hints that deprioritize contact/staff pages). For re-enriching
+// already-qualified facilities on sites with deeper structures than the
+// first crawl reached, to find named people and published emails it missed.
+const WIDE = process.argv.includes('--wide');
 
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -283,7 +289,8 @@ async function enrichSite(page, site) {
   if (!home) throw lastErr;
 
   const pages = [home];
-  for (const sub of pickSubpages(home.links, site.domain, DEEP ? 12 : 6, DEEP)) {
+  const subpageLimit = DEEP || WIDE ? 12 : 6;
+  for (const sub of pickSubpages(home.links, site.domain, subpageLimit, DEEP)) {
     try {
       pages.push(await fetchPage(page, sub, { timeout: 20000 }));
     } catch {

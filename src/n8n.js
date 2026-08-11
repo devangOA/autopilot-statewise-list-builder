@@ -358,7 +358,11 @@ if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFile
   };
   const state = arg('state', 'CA');
   let master = readRows(arg('in', 'CALIFORNIA_INDOOR_COURT_FACILITIES.csv'));
-  const contacts = loadContactIndex(arg('contacts', '.cache-ca/rows.json'));
+  // --contacts2 is a second contact pass (e.g. a wider re-crawl for more named
+  // people/emails) merged in on top of --contacts; loadContactIndex's
+  // richer-record-wins rule picks the better version of each facility from
+  // whichever pass found more.
+  const contacts = loadContactIndex([arg('contacts', '.cache-ca/rows.json'), arg('contacts2', '')]);
   const upgradeFile = arg('upgrades', '');
   let upgraded = 0;
   if (upgradeFile && fs.existsSync(upgradeFile)) {
