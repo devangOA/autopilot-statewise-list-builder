@@ -402,7 +402,7 @@ const OR_MARKETS = [
   'Lake Oswego OR', 'Tualatin OR', 'West Linn OR', 'Wilsonville OR', 'Oregon City OR',
   'Milwaukie OR', 'Happy Valley OR', 'Sherwood OR', 'Forest Grove OR', 'Cornelius OR',
   'Troutdale OR', 'Fairview OR', 'Wood Village OR', 'Sandy OR', 'Damascus OR',
-  'King City OR', 'Durham OR', 'Hillsboro OR',
+  'King City OR', 'Durham OR',
   // Willamette Valley
   'Newberg OR', 'McMinnville OR', 'Salem OR', 'Keizer OR', 'Albany OR', 'Corvallis OR',
   'Eugene OR', 'Springfield OR', 'Woodburn OR', 'Silverton OR', 'Dallas OR',
