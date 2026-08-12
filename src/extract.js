@@ -99,7 +99,37 @@ export class FetchError extends Error {
   }
 }
 
+// page.goto's own `timeout` only bounds navigation. Everything after it --
+// evaluate(), content() -- has no timeout of its own, so a page that loads
+// but then hangs (a stuck script, an unanswered dialog) blocks forever with
+// no ceiling. A real case: whereorg.com wedged one worker for over an hour
+// and stalled the entire North Carolina crawl, undetected because nothing
+// ever threw -- the await just never returned. FETCH_TIMEOUT lets the caller
+// recognize this specific failure mode and recover the page, since a
+// Promise.race timeout does not cancel the underlying (still-running) call --
+// the same page object may still be wedged afterward.
+export const FETCH_TIMEOUT = 'FETCH_TIMEOUT';
+
 export async function fetchPage(page, url, { timeout = 25000 } = {}) {
+  let timer;
+  const budget = timeout + 15000;
+  try {
+    return await Promise.race([
+      fetchPageBody(page, url, timeout),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const e = new Error(`${FETCH_TIMEOUT}: no response after ${budget}ms for ${url}`);
+          e.code = FETCH_TIMEOUT;
+          reject(e);
+        }, budget);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchPageBody(page, url, timeout) {
   const res = await page.goto(url, { timeout, waitUntil: 'domcontentloaded' });
   const status = res?.status() ?? 0;
   if (status >= 400) throw new FetchError(url, status);

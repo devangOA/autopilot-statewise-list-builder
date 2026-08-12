@@ -14,7 +14,7 @@ import {
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
   looksRetail, detectNyEvidence, guessFacilityType, detectCity,
   guessTitleFromName, decodeEntities, matchEmailsToPeople, detectAddresses,
-  detectStateEvidence, setActiveState,
+  detectStateEvidence, setActiveState, FETCH_TIMEOUT,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
@@ -334,7 +334,7 @@ async function enrichAll(browser, sites) {
   };
 
   async function worker() {
-    const { ctx, page } = await newCrawlContext(browser);
+    let { ctx, page } = await newCrawlContext(browser);
     while (true) {
       const i = next++;
       if (i >= list.length) break;
@@ -353,10 +353,25 @@ async function enrichAll(browser, sites) {
           log(`  abort ${site.domain}: browser closed - left unmarked for resume`);
           break;
         }
-        // Playwright failing is not the final verdict any more: the URL goes to
-        // the fallback queue and is only marked attempted once every allowed
-        // method has been exhausted.
-        if (USE_FALLBACK) {
+        if (e.code === FETCH_TIMEOUT) {
+          // fetchPage's own Promise.race already bounded the hang, but it
+          // cannot cancel the underlying call -- the page may still be wedged.
+          // A real case: whereorg.com stalled one worker for over an hour with
+          // no error and no log line, silently blocking the whole crawl.
+          // Recreate the page/context so the wedge cannot carry over to the
+          // next site; this one genuinely was researched, so it stays marked.
+          log(`  timeout ${site.domain}: ${msg} - recovering page`);
+          ctx.close().catch(() => {});
+          try {
+            ({ ctx, page } = await newCrawlContext(browser));
+          } catch (e2) {
+            log(`  abort: could not recover a fresh page context - ${e2.message.split('\n')[0]}`);
+            break;
+          }
+        } else if (USE_FALLBACK) {
+          // Playwright failing is not the final verdict any more: the URL goes
+          // to the fallback queue and is only marked attempted once every
+          // allowed method has been exhausted.
           fallbackQueue.push({ domain: site.domain, url: site.url, titles: site.titles || [], snippets: site.snippets || [], reason: msg });
           log(`  queue ${site.domain}: ${msg}`);
           // Counted as handed off, not as researched: `attempted` is still not
@@ -364,8 +379,9 @@ async function enrichAll(browser, sites) {
           // loop's own progress count stays accurate.
           done++;
           continue;
+        } else {
+          log(`  fail ${site.domain}: ${msg}`);
         }
-        log(`  fail ${site.domain}: ${msg}`);
       }
       // Marked after the attempt regardless of outcome: a site that failed or
       // was disqualified has been researched and should not be re-crawled.
@@ -375,7 +391,7 @@ async function enrichAll(browser, sites) {
         flush();
       }
     }
-    await ctx.close();
+    await ctx.close().catch(() => {});
   }
 
   // Exactly one fallback worker, by design: it runs a Python subprocess per URL
