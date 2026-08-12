@@ -79,4 +79,4 @@ export function preferHttps(url) {
  * error, and the crawl died on its first Playwright failure.
  */
 export const BROWSER_GONE =
-  /Target (page|closed)|context or browser has been closed|Browser(Context)? has been closed|browser has disconnected|Protocol error|Connection closed|Session closed/i;
+  /Target (page|closed)|context or browser has been closed|Browser(Context)? has been closed|browser has disconnected|Protocol error|Connection closed|Session closed|Page crashed/i;
