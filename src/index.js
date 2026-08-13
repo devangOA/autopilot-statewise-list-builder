@@ -14,7 +14,7 @@ import {
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
   looksRetail, detectNyEvidence, guessFacilityType, detectCity,
   guessTitleFromName, decodeEntities, matchEmailsToPeople, detectAddresses,
-  detectStateEvidence, setActiveState, FETCH_TIMEOUT,
+  detectStateEvidence, setActiveState, FETCH_TIMEOUT, detectPhone,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
@@ -224,6 +224,7 @@ function buildRow(site, pages, meta = {}) {
 
   const guesses = person && !publicDirect ? guessEmails(person.first, person.last, site.domain) : ['', '', '', '', '', ''];
   const { count, note } = detectCourtCount(corpus);
+  const phone = detectPhone(corpus);
 
   const notes = [verdict.reason];
   if (stateEvidence) notes.push(`${STATE} location evidence: ${stateEvidence}.`);
@@ -246,6 +247,7 @@ function buildRow(site, pages, meta = {}) {
     'Decision Maker First Name': person?.first || '',
     'Decision Maker Last Name': person?.last || '',
     'Decision Maker Title': person?.title || '',
+    Phone: phone,
     'Public Direct Email': publicDirect,
     'Shared Facility Email': shared,
     'Guessed Email 1': guesses[0],

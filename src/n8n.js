@@ -289,7 +289,7 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
         'Company Name': resolveCompanyName(f['Facility Name'], extra, f.Website),
         Website: f.Website,
         Address: address,
-        Phone: '', // not collected by this pipeline; left blank rather than guessed
+        Phone: f.Phone || '',
         'Primary Type': f['Facility Type'],
         'Google Maps URL': mapsUrl(f['Facility Name'], f.City, state),
         'Claygent Fit': 'Strong Fit',

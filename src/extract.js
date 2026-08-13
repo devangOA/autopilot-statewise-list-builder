@@ -728,6 +728,43 @@ export function detectAddresses(text) {
   return [...seen.values()];
 }
 
+/**
+ * The facility's published phone number, if any.
+ *
+ * Requires visible formatting (parens, a dash, or a dot between groups) and
+ * NANP-valid area/exchange codes (neither starts with 0 or 1), so a bare
+ * 10-digit run that happens to appear on the page -- a tracking ID, an
+ * order number, part of a ZIP+4 -- is not mistaken for a phone number. A
+ * number labelled "Fax" immediately beforehand is excluded; a number whose
+ * area code matches the active state's known area codes (the same
+ * corroborating signal used by the location gate) is preferred over one
+ * that doesn't, since a page can carry a vendor's or franchisor's number
+ * alongside the facility's own.
+ */
+const PHONE_RE = /(?<!\d)\(?(\d{3})\)?[\s.-](\d{3})[\s.-](\d{4})(?!\d)/g;
+
+export function detectPhone(text) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  const seen = new Set();
+  const candidates = [];
+  let m;
+  while ((m = PHONE_RE.exec(t)) !== null) {
+    const [area, exch, line] = [m[1], m[2], m[3]];
+    if (!/^[2-9]/.test(area) || !/^[2-9]/.test(exch)) continue;
+    const digits = area + exch + line;
+    if (seen.has(digits)) continue;
+    const before = t.slice(Math.max(0, m.index - 12), m.index).toLowerCase();
+    if (/\bfax\b/.test(before)) continue;
+    seen.add(digits);
+    candidates.push({ area, exch, line });
+  }
+  if (!candidates.length) return '';
+  const st = active();
+  const local = candidates.find((c) => st.areaCodes.test(`(${c.area}) 000-0000`));
+  const chosen = local || candidates[0];
+  return `(${chosen.area}) ${chosen.exch}-${chosen.line}`;
+}
+
 // ---------------------------------------------------------------------------
 // New York relevance
 // ---------------------------------------------------------------------------

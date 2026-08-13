@@ -12,6 +12,7 @@ export const COLUMNS = [
   'Decision Maker First Name',
   'Decision Maker Last Name',
   'Decision Maker Title',
+  'Phone',
   'Public Direct Email',
   'Shared Facility Email',
   'Guessed Email 1',

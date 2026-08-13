@@ -10,6 +10,7 @@ import {
   detectSports, detectCourtCount, looksExcluded, looksMonetized,
   guessFacilityType, detectCity, guessTitleFromName, pickSubpages,
   looksRetail, detectNyEvidence, detectAddresses, matchEmailsToPeople,
+  detectPhone,
 } from '../src/extract.js';
 import { guessEmails } from '../src/emails.js';
 import { qualify, isKeepable } from '../src/classify.js';
@@ -729,6 +730,29 @@ await check('company names never come from page furniture', () => {
   assert.equal(resolveCompanyName('Welcome to Kingwood Texas', {}, 'https://kingwood.com/'), 'Kingwood Texas');
   // A real name is never rewritten.
   assert.equal(resolveCompanyName('Empire Racquet Club', {}, 'https://empireracquet.com/'), 'Empire Racquet Club');
+});
+
+await check('phone numbers are extracted but never invented or confused with other digits', () => {
+  setActiveState('UT');
+  assert.equal(detectPhone('Call us at (801) 555-1234 for court bookings.'), '(801) 555-1234');
+  assert.equal(detectPhone('Reach the front desk at 801-555-9876 anytime.'), '(801) 555-9876');
+  // A labelled fax line is excluded even when it is the only number on the page.
+  assert.equal(detectPhone('Fax: 801-555-0000'), '');
+  assert.equal(detectPhone('Phone: 801.555.4321 | Fax: 801.555.0000'), '(801) 555-4321');
+  // A bare 10-digit run with no separators is an order number, not a phone.
+  assert.equal(detectPhone('Order #8015551234 was shipped.'), '');
+  // A ZIP+4 must not be mistaken for a phone number.
+  assert.equal(detectPhone('ZIP+4: 84101-1234 is our mailing code.'), '');
+  // Toll-free numbers are accepted; they carry no state area code to match.
+  assert.equal(detectPhone('Toll-free: 1-800-555-6789 for reservations.'), '(800) 555-6789');
+  // When a page carries a vendor's out-of-state number alongside the
+  // facility's own, the one matching the active state's area codes wins.
+  assert.equal(
+    detectPhone('Our vendor line is (212) 555-0000, but call 801-555-7777 for the Utah club.'),
+    '(801) 555-7777',
+  );
+  assert.equal(detectPhone('No phone info here at all.'), '');
+  setActiveState('NY');
 });
 
 await browser.close();
