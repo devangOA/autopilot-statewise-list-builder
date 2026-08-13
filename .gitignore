@@ -49,6 +49,11 @@ experiments/**/out/
 .cache-screview/
 .cache-scwide/
 
+# Utah caches (regenerable)
+.cache-ut/
+.cache-utreview/
+.cache-utwide/
+
 overnight.log
 reverify.log
 fillgaps.log
