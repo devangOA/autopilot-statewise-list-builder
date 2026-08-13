@@ -588,6 +588,27 @@ await check('n8n rows follow the reference row behaviour', () => {
   assert.equal(new Set(rows.map((r) => r['Final Email'])).size, rows.length);
   assert.ok(rows.every((r) => r['Track ID'] === 'CA-COURTS-001'));
 });
+await check('n8n Phone comes from the contact pass, not just the master row', () => {
+  // Reproduces exactly what happened on this project: a state's master CSV
+  // was built before phone extraction existed, so its Phone column is
+  // permanently empty (the master is written once and never re-crawled).
+  // A later pass (needs-review re-verification, wide contact crawl) finds
+  // the phone and stores it in the contacts map instead. The n8n build must
+  // read Phone from there, not only from the master row, or the number is
+  // silently lost even though it was genuinely found.
+  const master = [{
+    'Facility Name': 'Old Pass Club', Website: 'https://oldpassclub.com/', City: 'Provo', State: 'UT',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Email Domain': 'oldpassclub.com',
+    'Shared Facility Email': 'info@oldpassclub.com', 'Research Notes': '', 'Source URLs': 'https://oldpassclub.com/',
+    Phone: '', // this state's master predates phone extraction
+  }];
+  const contacts = new Map([['oldpassclub.com', {
+    Website: 'https://oldpassclub.com/', Phone: '(801) 555-1234', _people: [], _directEmails: [], _locations: [],
+  }]]);
+  const { rows } = buildN8n(master, contacts, { state: 'UT' });
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => r['Phone'] === '(801) 555-1234'));
+});
 await check('needs-review facilities never reach the n8n csv', () => {
   const master = [{
     'Facility Name': 'Unclear Club', Website: 'https://unclear.com/', City: 'Fresno', State: 'CA',
