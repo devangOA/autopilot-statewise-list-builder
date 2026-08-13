@@ -188,13 +188,23 @@ export function loadContactIndex(file) {
     .filter((f) => f && fs.existsSync(f))
     .flatMap((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
   const idx = new Map();
+  const weight = (x) => (x._people?.length || 0) + (x._locations?.length || 0) + (x._directEmails?.length || 0);
   for (const r of rows) {
     const key = registrableDomain(r.Website || '');
     if (!key) continue;
     const prev = idx.get(key);
-    // Richer record wins if a domain was crawled twice.
-    const weight = (x) => (x._people?.length || 0) + (x._locations?.length || 0) + (x._directEmails?.length || 0);
-    if (!prev || weight(r) > weight(prev)) idx.set(key, r);
+    if (!prev) {
+      idx.set(key, r);
+      continue;
+    }
+    // Richer record wins on people/locations/emails, same as before -- but a
+    // phone number found by either pass is never discarded just because the
+    // other pass scored higher on those. This pipeline never re-derives a
+    // phone without re-fetching the page, so silently dropping one a second
+    // pass found is a real, unrecoverable loss, not a rounding error.
+    const winner = weight(r) > weight(prev) ? r : prev;
+    const loser = winner === r ? prev : r;
+    idx.set(key, winner.Phone ? winner : loser.Phone ? { ...winner, Phone: loser.Phone } : winner);
   }
   return idx;
 }

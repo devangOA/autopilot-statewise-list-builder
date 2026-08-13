@@ -18,7 +18,7 @@ import { QUALIFICATION } from '../src/schema.js';
 import { toCsv } from '../src/csv.js';
 import { registrableDomain, isNonFacilityHost, isGovHost, unwrapRedirect, apexDomain } from '../src/search.js';
 import { finalize, mailDomain, nameKey, looksLikePublisher, looksLikeNonFacilityOrg } from '../src/finalize.js';
-import { nameIsConfirmed, candidatesFor } from '../src/reoon.js';
+import { nameIsConfirmed, candidatesFor, loadContactIndex } from '../src/reoon.js';
 import { validateFallback, RETRIEVAL } from '../src/fallback.js';
 import { N8N_COLUMNS, fitNotes, build as buildN8n, weakLocationEvidence, resolveCompanyName } from '../src/n8n.js';
 import { setActiveState, detectStateEvidence } from '../src/extract.js';
@@ -753,6 +753,34 @@ await check('phone numbers are extracted but never invented or confused with oth
   );
   assert.equal(detectPhone('No phone info here at all.'), '');
   setActiveState('NY');
+});
+
+await check('a phone number found by either enrichment pass survives merging, even when it loses on weight', () => {
+  const dir = fs.mkdtempSync(path.join(process.cwd(), '.tmp-test-'));
+  try {
+    // Pass A: richer overall (two people), but the phone was added to
+    // extract.js after this pass ran and so found none -- exactly what
+    // happened mid-run on this project. Pass B: weaker (no named people),
+    // but ran after the fix and found the facility's phone number.
+    const passA = path.join(dir, 'a.json');
+    const passB = path.join(dir, 'b.json');
+    fs.writeFileSync(passA, JSON.stringify([{
+      Website: 'https://example.com/', _people: [{ first: 'A', last: 'One' }, { first: 'B', last: 'Two' }],
+      _locations: [], _directEmails: [], Phone: '',
+    }]));
+    fs.writeFileSync(passB, JSON.stringify([{
+      Website: 'https://example.com/', _people: [], _locations: [], _directEmails: [],
+      Phone: '(801) 555-1234',
+    }]));
+    const idx = loadContactIndex([passA, passB]);
+    const merged = idx.get('example.com');
+    // The richer pass's people are kept (weight-based winner unchanged)...
+    assert.equal(merged._people.length, 2);
+    // ...but the phone the weaker pass found is not silently discarded.
+    assert.equal(merged.Phone, '(801) 555-1234');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 await browser.close();
