@@ -628,6 +628,49 @@ const SC_MARKETS = [
   'Lake Wylie SC', 'Gaffney SC',
 ];
 
+const UT_MARKETS = [
+  // Salt Lake County
+  'Salt Lake City UT', 'West Valley City UT', 'West Jordan UT', 'Sandy UT', 'Murray UT',
+  'Taylorsville UT', 'South Jordan UT', 'Draper UT', 'Riverton UT', 'Herriman UT',
+  'Bluffdale UT', 'Cottonwood Heights UT', 'Holladay UT', 'Millcreek UT', 'Midvale UT',
+  'South Salt Lake UT', 'Kearns UT', 'Magna UT', 'Copperton UT', 'Alta UT',
+  // Davis County
+  'Bountiful UT', 'Layton UT', 'Clearfield UT', 'Syracuse UT', 'Clinton UT',
+  'Kaysville UT', 'Farmington UT', 'Centerville UT', 'Woods Cross UT', 'North Salt Lake UT',
+  'West Bountiful UT', 'Fruit Heights UT', 'West Point UT',
+  // Weber County / Ogden
+  'Ogden UT', 'Roy UT', 'Washington Terrace UT', 'Riverdale UT', 'South Ogden UT',
+  'North Ogden UT', 'Pleasant View UT', 'Farr West UT', 'Plain City UT', 'Harrisville UT',
+  'Hooper UT', 'West Haven UT', 'Huntsville UT',
+  // Utah County (Provo-Orem)
+  'Provo UT', 'Orem UT', 'American Fork UT', 'Pleasant Grove UT', 'Lehi UT',
+  'Lindon UT', 'Highland UT', 'Alpine UT', 'Cedar Hills UT', 'Saratoga Springs UT',
+  'Eagle Mountain UT', 'Spanish Fork UT', 'Springville UT', 'Payson UT', 'Santaquin UT',
+  'Mapleton UT', 'Salem UT', 'Elk Ridge UT', 'Genola UT', 'Goshen UT', 'Vineyard UT',
+  'Woodland Hills UT',
+  // Summit / Wasatch (Park City area)
+  'Park City UT', 'Heber City UT', 'Midway UT', 'Kamas UT', 'Coalville UT', 'Oakley UT',
+  'Francis UT',
+  // Washington County (St George area)
+  'St George UT', 'Washington UT', 'Hurricane UT', 'Ivins UT', 'Santa Clara UT',
+  'La Verkin UT', 'Toquerville UT', 'Hildale UT', 'Enterprise UT', 'Apple Valley UT',
+  // Iron / Beaver County
+  'Cedar City UT', 'Enoch UT', 'Parowan UT', 'Beaver UT', 'Minersville UT',
+  // Central Utah (Sanpete, Millard, Juab, Sevier)
+  'Nephi UT', 'Mona UT', 'Levan UT', 'Manti UT', 'Ephraim UT', 'Mount Pleasant UT',
+  'Gunnison UT', 'Fountain Green UT', 'Delta UT', 'Fillmore UT', 'Richfield UT',
+  'Monroe UT', 'Salina UT', 'Elsinore UT',
+  // Southeast Utah
+  'Moab UT', 'Price UT', 'Helper UT', 'Castle Dale UT', 'Huntington UT', 'Ferron UT',
+  'Green River UT', 'Monticello UT', 'Blanding UT',
+  // Uintah Basin
+  'Vernal UT', 'Roosevelt UT', 'Duchesne UT', 'Naples UT', 'Ballard UT',
+  // Cache / Box Elder (northern Utah)
+  'Logan UT', 'Smithfield UT', 'Hyrum UT', 'Providence UT', 'North Logan UT',
+  'Nibley UT', 'River Heights UT', 'Hyde Park UT', 'Richmond UT', 'Tremonton UT',
+  'Brigham City UT', 'Perry UT', 'Willard UT', 'Garland UT',
+];
+
 // Markets double as the municipality whitelist; `extra` adds neighbourhoods and
 // smaller towns that appear in addresses but are not worth querying separately.
 const placeSet = (markets, extra = []) =>
@@ -1353,6 +1396,51 @@ export const STATES = {
       'sportsplex South Carolina',
       'South Carolina YMCA gymnasium court rental',
       'indoor basketball facility South Carolina list',
+    ],
+  },
+  UT: {
+    code: 'UT',
+    name: 'Utah',
+    stateRe: /(?:UT|Utah)/,
+    // Utah ZIPs run 84001-84791.
+    zipRe: /\b(?:UT|Utah)\s+84\d{3}\b/,
+    zipBare: /^84\d{3}$/,
+    areaCodes: /\(?(385|435|801)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\bUtah\b/i,
+    markets: UT_MARKETS,
+    places: placeSet(UT_MARKETS, [
+      'sugar house', 'the avenues', 'liberty wells', 'downtown salt lake city',
+      'rose park', 'glendale slc', 'fairpark', 'poplar grove', 'east liberty park',
+      'foothill', 'yalecrest', 'federal heights', 'capitol hill slc', 'marmalade',
+      'granger', 'hunter', 'chesterfield', 'redwood', 'westpointe',
+      'daybreak', 'south jordan heights', 'bingham creek', 'welby',
+      'copper hills', 'rose creek', 'herriman springs', 'suncrest',
+      'sandy hills', 'crescent', 'granite slc', 'union fort', 'willow creek',
+      'brighton ut', 'solitude', 'snowbird', 'white city',
+      'north salt lake heights', 'foxboro', 'valley view davis',
+      'clearfield air force base', 'hill afb', 'syracuse west',
+      'north ogden divide', 'liberty ut', 'eden ut', 'huntsville ut',
+      'uintah ut', 'mountain green', 'morgan ut', 'peterson ut',
+      'daniel ut', 'charleston ut', 'independence ut', 'wallsburg ut',
+      'timber lakes', 'woodland ut', 'kamas valley', 'peoa',
+      'hideout ut', 'jeremy ranch', 'silver summit', 'snyderville',
+      'wolf creek', 'echo ut', 'henefer ut', 'croydon ut',
+      'holladay hills', 'olympus cove', 'canyon rim', 'mount olympus',
+      'wasatch front', 'benjamin ut', 'lake shore ut', 'palmyra ut',
+      'benjamin', 'leland ut', 'thistle ut', 'diamond fork',
+      'pigeon hollow', 'starr ut', 'birdseye ut', 'covered bridge canyon',
+    ]),
+    gov: GOV('UT'),
+    statewide: [
+      'indoor pickleball facilities Utah directory',
+      'USTA Intermountain indoor tennis facilities Utah',
+      'indoor sports complex Utah list',
+      'Utah volleyball clubs indoor facility list',
+      'indoor padel clubs Utah',
+      'best indoor pickleball courts Salt Lake City',
+      'sportsplex Utah',
+      'Utah YMCA gymnasium court rental',
+      'indoor basketball facility Utah list',
     ],
   },
 };
