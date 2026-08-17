@@ -54,6 +54,17 @@ experiments/**/out/
 .cache-utreview/
 .cache-utwide/
 
+# Ohio / New Jersey / Virginia caches (regenerable)
+.cache-oh/
+.cache-ohreview/
+.cache-ohwide/
+.cache-nj/
+.cache-njreview/
+.cache-njwide/
+.cache-va/
+.cache-vareview/
+.cache-vawide/
+
 overnight.log
 reverify.log
 fillgaps.log
