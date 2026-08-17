@@ -14,7 +14,7 @@ import {
   detectIndoor, detectSports, detectCourtCount, looksExcluded, looksMonetized,
   looksRetail, detectNyEvidence, guessFacilityType, detectCity,
   guessTitleFromName, decodeEntities, matchEmailsToPeople, detectAddresses,
-  detectStateEvidence, setActiveState, FETCH_TIMEOUT, detectPhone,
+  detectStateEvidence, setActiveState, FETCH_TIMEOUT, detectPhone, detectSquareFootage,
 } from './extract.js';
 import { guessEmails, GUESS_DISCLAIMER } from './emails.js';
 import { qualify, isKeepable } from './classify.js';
@@ -225,12 +225,15 @@ function buildRow(site, pages, meta = {}) {
   const guesses = person && !publicDirect ? guessEmails(person.first, person.last, site.domain) : ['', '', '', '', '', ''];
   const { count, note } = detectCourtCount(corpus);
   const phone = detectPhone(corpus);
+  const facilityType = guessFacilityType(name, corpus);
+  const { sqft, note: sqftNote } = detectSquareFootage(corpus, facilityType);
 
   const notes = [verdict.reason];
   if (stateEvidence) notes.push(`${STATE} location evidence: ${stateEvidence}.`);
   if (!person) notes.push('No decision maker found on public pages.');
   if (guesses[0]) notes.push(GUESS_DISCLAIMER);
   if (!count) notes.push('No court count stated by a reliable source; left blank.');
+  if (!sqft) notes.push('No square footage stated by a reliable source; left blank.');
   if (monetized) notes.push('Paid access signals present (membership/rental/program).');
   if (meta.fallbackNote) notes.push(meta.fallbackNote);
 
@@ -239,11 +242,13 @@ function buildRow(site, pages, meta = {}) {
     Website: pages[0]?.url || site.url,
     City: detectCity(text),
     State: STATE,
-    'Facility Type': guessFacilityType(name, corpus),
+    'Facility Type': facilityType,
     'Sports Offered': sports.join('; '),
     'Indoor Court Status': verdict.indoorStatus,
     'Number of Courts': count,
     'Court Count Notes': note,
+    'Square Footage': sqft,
+    'Square Footage Notes': sqftNote,
     'Decision Maker First Name': person?.first || '',
     'Decision Maker Last Name': person?.last || '',
     'Decision Maker Title': person?.title || '',

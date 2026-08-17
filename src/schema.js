@@ -9,6 +9,8 @@ export const COLUMNS = [
   'Indoor Court Status',
   'Number of Courts',
   'Court Count Notes',
+  'Square Footage',
+  'Square Footage Notes',
   'Decision Maker First Name',
   'Decision Maker Last Name',
   'Decision Maker Title',

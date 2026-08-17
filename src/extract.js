@@ -454,6 +454,50 @@ export function detectCourtCount(text) {
   return { count: '', note: '' };
 }
 
+// A school or university's own square-footage claim usually describes the
+// whole campus or building, not the gym -- pricing a cleaning contract off
+// "our 200,000 sq ft campus" would be wildly wrong. For those two facility
+// types only, a match counts only when a sports/athletic word appears in
+// the same window; a dedicated sports facility (racquet club, sportsplex,
+// etc.) needs no such check, since its own square footage figure already
+// IS its sports space by definition.
+const SQFT_RE = /(\d{1,3}(?:,\d{3})*)\s*[+-]?\s*(?:square[\s-]?(?:feet|foot|ft\.?)|sq\.?\s*\.?\s*ft\.?|sf)\b/gi;
+const SPORTS_CONTEXT_RE = /\b(gym|gymnasium|courts?|athletic|fieldhouse|arena|fitness center|rec(?:reation)? center|sports complex|sportsplex)\b/i;
+const SCHOOL_TYPES = new Set(['School', 'College / University']);
+
+/**
+ * Only returns a square footage when the page states one explicitly, and
+ * always returns the sentence it came from so it can be audited. Never
+ * estimated from the court count or facility type.
+ */
+export function detectSquareFootage(text, facilityType) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  const requireSportsContext = SCHOOL_TYPES.has(facilityType);
+  const re = new RegExp(SQFT_RE);
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const n = parseInt(m[1].replace(/,/g, ''), 10);
+    if (!n || n < 200 || n > 1000000) continue;
+    if (requireSportsContext) {
+      // The context check must be scoped to this match's OWN sentence, not a
+      // fixed character radius -- a wider window can bleed into the next
+      // sentence and let an unrelated "gymnasium" a few words later falsely
+      // corroborate a campus-wide figure that has nothing to do with it.
+      const sentStart = Math.max(t.lastIndexOf('.', m.index), t.lastIndexOf('!', m.index), t.lastIndexOf('?', m.index)) + 1;
+      const nextDot = t.indexOf('.', m.index);
+      const nextBang = t.indexOf('!', m.index);
+      const nextQ = t.indexOf('?', m.index);
+      const enders = [nextDot, nextBang, nextQ].filter((i) => i !== -1);
+      const sentEnd = enders.length ? Math.min(...enders) + 1 : t.length;
+      if (!SPORTS_CONTEXT_RE.test(t.slice(sentStart, sentEnd))) continue;
+    }
+    const start = Math.max(0, m.index - 90);
+    const end = m.index + m[0].length + 90;
+    return { sqft: n, note: t.slice(start, end).trim() };
+  }
+  return { sqft: '', note: '' };
+}
+
 // ---------------------------------------------------------------------------
 // Exclusions and typing
 // ---------------------------------------------------------------------------

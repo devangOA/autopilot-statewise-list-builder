@@ -103,6 +103,10 @@ export function fitNotes({ facility, person, kind, state, branches, upgraded }) 
   if (facility['Sports Offered']) parts.push(`Sports offered: ${facility['Sports Offered']}.`);
   // Only ever the count a page stated outright; never inferred.
   if (facility['Number of Courts']) parts.push(`Published court count: ${facility['Number of Courts']}.`);
+  // Same rule as court count: only a figure the page stated outright, and
+  // for a school/university only one the extractor already confirmed was
+  // describing the sports space, not the whole campus.
+  if (facility['Square Footage']) parts.push(`Published square footage: ${facility['Square Footage']} sq ft.`);
   if (branches && branches.length > 1) {
     parts.push(
       `Operates ${branches.length} ${state} locations: ` +
@@ -165,6 +169,8 @@ export function applyUpgrades(master, upgradeRows) {
       'Sports Offered': u['Sports Offered'] || r['Sports Offered'],
       'Number of Courts': r['Number of Courts'] || u['Number of Courts'],
       'Court Count Notes': r['Court Count Notes'] || u['Court Count Notes'],
+      'Square Footage': r['Square Footage'] || u['Square Footage'],
+      'Square Footage Notes': r['Square Footage Notes'] || u['Square Footage Notes'],
       'Source URLs': u['Source URLs'] || r['Source URLs'],
       'Research Notes': `${r['Research Notes'] || ''} Upgraded from Needs Review on re-verification: indoor evidence found on a deeper crawl of this site.`.trim(),
     };
@@ -305,7 +311,19 @@ export function build(master, contacts, { state = 'CA', trackId = 'CA-COURTS-001
         'Work Email': kind === 'generic' ? email : '',
         'Final Email': email,
         'Email Source': c.type,
-        'Fit Notes': fitNotes({ facility: { ...f, 'Facility Name': resolveCompanyName(f['Facility Name'], extra, f.Website) }, person, kind, state, branches: locs, upgraded: /Upgraded from Needs Review/.test(f['Research Notes'] || '') }),
+        'Fit Notes': fitNotes({
+          facility: {
+            ...f,
+            'Facility Name': resolveCompanyName(f['Facility Name'], extra, f.Website),
+            // Same reasoning as Phone above: a wide-crawl pass run after this
+            // field existed may have found it even when the master row (built
+            // earlier) never did.
+            'Square Footage': extra?.['Square Footage'] || f['Square Footage'],
+            'Square Footage Notes': extra?.['Square Footage Notes'] || f['Square Footage Notes'],
+          },
+          person, kind, state, branches: locs,
+          upgraded: /Upgraded from Needs Review/.test(f['Research Notes'] || ''),
+        }),
       });
     }
 

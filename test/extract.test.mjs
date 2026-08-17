@@ -10,7 +10,7 @@ import {
   detectSports, detectCourtCount, looksExcluded, looksMonetized,
   guessFacilityType, detectCity, guessTitleFromName, pickSubpages,
   looksRetail, detectNyEvidence, detectAddresses, matchEmailsToPeople,
-  detectPhone,
+  detectPhone, detectSquareFootage,
 } from '../src/extract.js';
 import { guessEmails } from '../src/emails.js';
 import { qualify, isKeepable } from '../src/classify.js';
@@ -609,6 +609,25 @@ await check('n8n Phone comes from the contact pass, not just the master row', ()
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r['Phone'] === '(801) 555-1234'));
 });
+await check('n8n Fit Notes mention square footage from the contact pass, not just the master row', () => {
+  // Same shape of bug as Phone above, and the same fix: square footage has
+  // no dedicated n8n column (N8N_COLUMNS is a fixed external format), so it
+  // only ever surfaces through Fit Notes -- which must read the best
+  // available value, not just whatever the master row happened to have.
+  const master = [{
+    'Facility Name': 'Old Pass Club', Website: 'https://oldpassclub.com/', City: 'Provo', State: 'UT',
+    'Qualification Status': QUALIFICATION.CONFIRMED_INDOOR, 'Email Domain': 'oldpassclub.com',
+    'Shared Facility Email': 'info@oldpassclub.com', 'Research Notes': '', 'Source URLs': 'https://oldpassclub.com/',
+    'Square Footage': '', 'Square Footage Notes': '', // predates the feature
+  }];
+  const contacts = new Map([['oldpassclub.com', {
+    Website: 'https://oldpassclub.com/', _people: [], _directEmails: [], _locations: [],
+    'Square Footage': 30000, 'Square Footage Notes': 'Our 30,000 sq ft facility.',
+  }]]);
+  const { rows } = buildN8n(master, contacts, { state: 'UT' });
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((r) => /Published square footage: 30000 sq ft\./.test(r['Fit Notes'])));
+});
 await check('needs-review facilities never reach the n8n csv', () => {
   const master = [{
     'Facility Name': 'Unclear Club', Website: 'https://unclear.com/', City: 'Fresno', State: 'CA',
@@ -776,6 +795,40 @@ await check('phone numbers are extracted but never invented or confused with oth
   setActiveState('NY');
 });
 
+await check('square footage is only captured when explicitly stated, and a school’s campus figure never masquerades as its gym’s', () => {
+  // A dedicated sports facility needs no sports-context check -- its own
+  // square footage figure already IS its sports space by definition.
+  assert.equal(detectSquareFootage('Our 50,000 square foot facility has 8 indoor pickleball courts.', 'Racquet / Tennis Club').sqft, 50000);
+  assert.equal(detectSquareFootage('This 10,000-square-foot sportsplex opened in 2020.', 'Sportsplex').sqft, 10000);
+  assert.equal(detectSquareFootage('We offer 25,000 sq ft of indoor court space.', 'Private Club').sqft, 25000);
+  assert.equal(detectSquareFootage('1,200 sf of dedicated pickleball courts.', 'Pickleball Club').sqft, 1200);
+  // A school/university's own figure usually describes the whole campus, not
+  // the gym -- pricing a cleaning contract off it would be wildly wrong. The
+  // check is scoped to the SAME SENTENCE as the number: a nearby but
+  // separate sentence about "the gymnasium" must not falsely corroborate an
+  // unrelated campus-wide figure, in either sentence order.
+  assert.equal(
+    detectSquareFootage('Our 200,000 square foot campus serves 3,000 students. The gymnasium is 12,000 square feet.', 'School').sqft,
+    12000,
+  );
+  assert.equal(
+    detectSquareFootage('The gymnasium is 12,000 square feet. Our campus overall is 200,000 square feet.', 'School').sqft,
+    12000,
+  );
+  assert.equal(
+    detectSquareFootage('Welcome to our 500,000 square foot campus with a beautiful library.', 'College / University').sqft,
+    '',
+  );
+  assert.equal(
+    detectSquareFootage('The athletic center spans 40,000 square feet with indoor courts.', 'School').sqft,
+    40000,
+  );
+  // Never estimated from the court count, facility type, or anything else.
+  assert.equal(detectSquareFootage('No size information published anywhere on this page.', 'Sportsplex').sqft, '');
+  // Sanity bounds reject an obviously-unrelated small number.
+  assert.equal(detectSquareFootage('This is room 100 sq ft in size.', 'Sportsplex').sqft, '');
+});
+
 await check('a phone number found by either enrichment pass survives merging, even when it loses on weight', () => {
   const dir = fs.mkdtempSync(path.join(process.cwd(), '.tmp-test-'));
   try {
@@ -799,6 +852,31 @@ await check('a phone number found by either enrichment pass survives merging, ev
     assert.equal(merged._people.length, 2);
     // ...but the phone the weaker pass found is not silently discarded.
     assert.equal(merged.Phone, '(801) 555-1234');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await check('a square footage found by either enrichment pass survives merging, even when it loses on weight', () => {
+  const dir = fs.mkdtempSync(path.join(process.cwd(), '.tmp-test-'));
+  try {
+    const passA = path.join(dir, 'a.json');
+    const passB = path.join(dir, 'b.json');
+    fs.writeFileSync(passA, JSON.stringify([{
+      Website: 'https://example.com/', _people: [{ first: 'A', last: 'One' }, { first: 'B', last: 'Two' }],
+      _locations: [], _directEmails: [], 'Square Footage': '', 'Square Footage Notes': '',
+    }]));
+    fs.writeFileSync(passB, JSON.stringify([{
+      Website: 'https://example.com/', _people: [], _locations: [], _directEmails: [],
+      'Square Footage': 30000, 'Square Footage Notes': 'Our 30,000 sq ft facility.',
+    }]));
+    const idx = loadContactIndex([passA, passB]);
+    const merged = idx.get('example.com');
+    assert.equal(merged._people.length, 2);
+    // The square footage the weaker pass found is not silently discarded,
+    // and its supporting note travels with it (never one without the other).
+    assert.equal(merged['Square Footage'], 30000);
+    assert.equal(merged['Square Footage Notes'], 'Our 30,000 sq ft facility.');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

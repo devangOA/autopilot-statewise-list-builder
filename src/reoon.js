@@ -197,14 +197,21 @@ export function loadContactIndex(file) {
       idx.set(key, r);
       continue;
     }
-    // Richer record wins on people/locations/emails, same as before -- but a
-    // phone number found by either pass is never discarded just because the
-    // other pass scored higher on those. This pipeline never re-derives a
-    // phone without re-fetching the page, so silently dropping one a second
-    // pass found is a real, unrecoverable loss, not a rounding error.
+    // Richer record wins on people/locations/emails, same as before -- but
+    // single-value facts found by either pass (phone, square footage) are
+    // never discarded just because the other pass scored higher on those.
+    // This pipeline never re-derives them without re-fetching the page, so
+    // silently dropping one a second pass found is a real, unrecoverable
+    // loss, not a rounding error.
     const winner = weight(r) > weight(prev) ? r : prev;
     const loser = winner === r ? prev : r;
-    idx.set(key, winner.Phone ? winner : loser.Phone ? { ...winner, Phone: loser.Phone } : winner);
+    const carryOver = {};
+    if (!winner.Phone && loser.Phone) carryOver.Phone = loser.Phone;
+    if (!winner['Square Footage'] && loser['Square Footage']) {
+      carryOver['Square Footage'] = loser['Square Footage'];
+      carryOver['Square Footage Notes'] = loser['Square Footage Notes'];
+    }
+    idx.set(key, Object.keys(carryOver).length ? { ...winner, ...carryOver } : winner);
   }
   return idx;
 }
