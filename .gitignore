@@ -65,6 +65,14 @@ experiments/**/out/
 .cache-vareview/
 .cache-vawide/
 
+# Massachusetts / Maryland caches (regenerable)
+.cache-ma/
+.cache-mareview/
+.cache-mawide/
+.cache-md/
+.cache-mdreview/
+.cache-mdwide/
+
 overnight.log
 reverify.log
 fillgaps.log

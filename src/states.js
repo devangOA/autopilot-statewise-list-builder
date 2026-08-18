@@ -917,6 +917,118 @@ const VA_MARKETS = [
   'Shenandoah VA',
 ];
 
+const MA_MARKETS = [
+  // Greater Boston
+  'Boston MA', 'Cambridge MA', 'Somerville MA', 'Newton MA', 'Brookline MA', 'Quincy MA',
+  'Waltham MA', 'Malden MA', 'Medford MA', 'Everett MA', 'Chelsea MA', 'Revere MA',
+  'Watertown MA', 'Arlington MA', 'Belmont MA', 'Winthrop MA', 'Melrose MA', 'Woburn MA',
+  'Stoneham MA', 'Wakefield MA', 'Reading MA', 'North Reading MA', 'Lynnfield MA', 'Saugus MA',
+  'Lynn MA', 'Swampscott MA', 'Marblehead MA', 'Salem MA', 'Beverly MA', 'Danvers MA',
+  'Peabody MA', 'Wilmington MA', 'Burlington MA', 'Bedford MA', 'Lexington MA', 'Concord MA',
+  'Lincoln MA', 'Sudbury MA', 'Wayland MA', 'Weston MA', 'Wellesley MA', 'Needham MA',
+  'Dedham MA', 'Milton MA', 'Braintree MA', 'Weymouth MA', 'Hingham MA', 'Cohasset MA',
+  'Scituate MA', 'Norwell MA', 'Hanover MA', 'Hull MA', 'Randolph MA', 'Canton MA',
+  'Stoughton MA', 'Sharon MA', 'Foxborough MA', 'Norfolk MA', 'Walpole MA', 'Norwood MA',
+  'Westwood MA', 'Medfield MA', 'Millis MA', 'Franklin MA', 'Bellingham MA', 'Milford MA',
+  'Natick MA', 'Framingham MA', 'Ashland MA', 'Holliston MA', 'Hopkinton MA', 'Hudson MA',
+  'Marlborough MA', 'Northborough MA', 'Southborough MA', 'Westborough MA', 'Shrewsbury MA',
+  'Grafton MA', 'Millbury MA',
+  // North Shore / Merrimack Valley
+  'Gloucester MA', 'Rockport MA', 'Ipswich MA', 'Essex MA', 'Hamilton MA', 'Wenham MA',
+  'Topsfield MA', 'Boxford MA', 'Georgetown MA', 'Rowley MA', 'Newburyport MA', 'Newbury MA',
+  'West Newbury MA', 'Amesbury MA', 'Salisbury MA', 'Merrimac MA', 'Haverhill MA', 'Methuen MA',
+  'Lawrence MA', 'Andover MA', 'North Andover MA', 'Tewksbury MA', 'Chelmsford MA', 'Billerica MA',
+  'Lowell MA', 'Dracut MA', 'Tyngsborough MA', 'Westford MA', 'Groton MA', 'Ayer MA',
+  'Pepperell MA', 'Townsend MA', 'Littleton MA',
+  // South Shore / Cape Cod
+  'Plymouth MA', 'Kingston MA', 'Duxbury MA', 'Pembroke MA', 'Marshfield MA', 'Halifax MA',
+  'Whitman MA', 'Abington MA', 'Rockland MA', 'Hanson MA', 'Bridgewater MA', 'East Bridgewater MA',
+  'West Bridgewater MA', 'Middleborough MA', 'Wareham MA', 'Bourne MA', 'Falmouth MA',
+  'Mashpee MA', 'Sandwich MA', 'Barnstable MA', 'Yarmouth MA', 'Dennis MA', 'Harwich MA',
+  'Chatham MA', 'Orleans MA', 'Brewster MA', 'Eastham MA', 'Wellfleet MA', 'Provincetown MA',
+  // Worcester area
+  'Worcester MA', 'Auburn MA', 'Leicester MA', 'Spencer MA', 'Oxford MA', 'Charlton MA',
+  'Sturbridge MA', 'Southbridge MA', 'Webster MA', 'Dudley MA', 'Holden MA', 'West Boylston MA',
+  'Boylston MA', 'Sterling MA', 'Clinton MA', 'Lancaster MA', 'Berlin MA', 'Hopedale MA',
+  'Mendon MA', 'Uxbridge MA', 'Northbridge MA', 'Blackstone MA', 'Douglas MA',
+  // South Coast
+  'New Bedford MA', 'Dartmouth MA', 'Fairhaven MA', 'Acushnet MA', 'Fall River MA',
+  'Somerset MA', 'Swansea MA', 'Westport MA', 'Rehoboth MA', 'Seekonk MA', 'Attleboro MA',
+  'North Attleborough MA', 'Mansfield MA', 'Easton MA', 'Raynham MA', 'Taunton MA',
+  'Berkley MA', 'Freetown MA', 'Lakeville MA',
+  // Pioneer Valley / Western MA
+  'Springfield MA', 'Chicopee MA', 'Holyoke MA', 'West Springfield MA', 'Agawam MA',
+  'Westfield MA', 'Southwick MA', 'East Longmeadow MA', 'Longmeadow MA', 'Wilbraham MA',
+  'Ludlow MA', 'Palmer MA', 'Ware MA', 'Belchertown MA', 'Amherst MA', 'Hadley MA',
+  'Northampton MA', 'Easthampton MA', 'South Hadley MA', 'Granby MA', 'Hatfield MA',
+  'Southampton MA',
+  // Berkshires
+  'Pittsfield MA', 'North Adams MA', 'Adams MA', 'Lenox MA', 'Great Barrington MA',
+  'Lee MA', 'Stockbridge MA', 'Williamstown MA',
+];
+
+const MD_MARKETS = [
+  // Baltimore metro
+  'Baltimore MD', 'Towson MD', 'Dundalk MD', 'Essex MD', 'Middle River MD', 'Rosedale MD',
+  'Parkville MD', 'Catonsville MD', 'Ellicott City MD', 'Columbia MD', 'Owings Mills MD',
+  'Reisterstown MD', 'Pikesville MD', 'Randallstown MD', 'Woodlawn MD', 'Windsor Mill MD',
+  'Lutherville-Timonium MD', 'Cockeysville MD', 'Hunt Valley MD', 'Sparks MD', 'Glyndon MD',
+  'Perry Hall MD', 'White Marsh MD', 'Nottingham MD', 'Glen Burnie MD', 'Pasadena MD',
+  'Severna Park MD', 'Arnold MD', 'Annapolis MD', 'Crofton MD', 'Odenton MD', 'Gambrills MD',
+  'Millersville MD',
+  // DC suburbs (Montgomery County)
+  'Silver Spring MD', 'Bethesda MD', 'Rockville MD', 'Gaithersburg MD', 'Germantown MD',
+  'Wheaton MD', 'Takoma Park MD', 'Chevy Chase MD', 'Kensington MD', 'Potomac MD',
+  'North Bethesda MD', 'Olney MD', 'Damascus MD', 'Poolesville MD', 'Clarksburg MD',
+  'Boyds MD', 'Laytonsville MD', 'Brookeville MD', 'Ashton MD', 'Sandy Spring MD',
+  'Colesville MD', 'Aspen Hill MD', 'Glenmont MD', 'White Oak MD', 'Burtonsville MD',
+  // DC suburbs (Prince George's County)
+  'College Park MD', 'Greenbelt MD', 'Bowie MD', 'Laurel MD', 'Landover MD', 'Largo MD',
+  'Upper Marlboro MD', 'Mitchellville MD', 'Beltsville MD', 'Lanham MD', 'Glenn Dale MD',
+  'Bladensburg MD', 'Hyattsville MD', 'Riverdale Park MD', 'District Heights MD',
+  'Suitland MD', 'Clinton MD', 'Fort Washington MD', 'Accokeek MD', 'Waldorf MD',
+  'La Plata MD', 'Indian Head MD',
+  // Frederick / Western Maryland
+  'Frederick MD', 'Middletown MD', 'Brunswick MD', 'Thurmont MD', 'Emmitsburg MD',
+  'Walkersville MD', 'Mount Airy MD', 'New Market MD', 'Hagerstown MD', 'Williamsport MD',
+  'Boonsboro MD', 'Smithsburg MD', 'Hancock MD', 'Cumberland MD', 'Frostburg MD',
+  'LaVale MD', 'Oakland MD',
+  // Southern Maryland
+  'Prince Frederick MD', 'Solomons MD', 'California MD', 'Lexington Park MD', 'Leonardtown MD',
+  'Charlotte Hall MD', 'Mechanicsville MD', 'Chesapeake Beach MD', 'North Beach MD',
+  // Eastern Shore
+  'Salisbury MD', 'Ocean City MD', 'Berlin MD', 'Cambridge MD', 'Easton MD', 'St Michaels MD',
+  'Denton MD', 'Chestertown MD', 'Elkton MD', 'North East MD', 'Havre de Grace MD',
+  'Aberdeen MD', 'Bel Air MD', 'Edgewood MD', 'Joppatowne MD', 'Perryville MD',
+  // Additional Baltimore County / Harford County
+  'White Hall MD', 'Monkton MD', 'Freeland MD', 'Parkton MD', 'Hereford MD', 'Phoenix MD',
+  'Jacksonville MD', 'Long Green MD', 'Kingsville MD', 'Fallston MD', 'Bel Air South MD',
+  'Forest Hill MD', 'Jarrettsville MD', 'Street MD', 'Whiteford MD', 'Pylesville MD',
+  'Darlington MD',
+  // Additional Anne Arundel County
+  'Severn MD', 'Hanover MD', 'Jessup MD', 'Linthicum MD', 'Ferndale MD', 'Brooklyn Park MD',
+  'Riviera Beach MD', 'Edgewater MD', 'Davidsonville MD', 'Crownsville MD', 'Fort Meade MD',
+  // Additional Howard County
+  'Elkridge MD', 'North Laurel MD', 'Savage MD', 'Highland MD', 'Clarksville MD',
+  'Fulton MD', 'Dayton MD', 'Glenwood MD', 'Woodbine MD', 'West Friendship MD',
+  'Marriottsville MD',
+  // Additional Carroll County
+  'Westminster MD', 'Eldersburg MD', 'Sykesville MD', 'Hampstead MD', 'Manchester MD',
+  'Taneytown MD', 'New Windsor MD', 'Union Bridge MD',
+  // Additional Southern Maryland
+  'Dunkirk MD', 'Owings MD', 'Huntingtown MD', 'Sunderland MD', 'Port Republic MD',
+  'St Leonard MD', 'Lusby MD', 'Broomes Island MD', 'Hollywood MD', 'Great Mills MD',
+  'Ridge MD', 'Callaway MD', 'Valley Lee MD', 'Bryantown MD', 'Hughesville MD',
+  'Pomfret MD', 'Nanjemoy MD', 'Port Tobacco MD', 'Newburg MD', 'Bel Alton MD', 'Marbury MD',
+  // Additional Eastern Shore
+  'Federalsburg MD', 'Preston MD', 'Ridgely MD', 'Greensboro MD', 'Hurlock MD', 'Vienna MD',
+  'Trappe MD', 'Oxford MD', 'Tilghman MD', 'Queenstown MD', 'Centreville MD', 'Church Hill MD',
+  'Sudlersville MD', 'Millington MD', 'Rock Hall MD', 'Betterton MD', 'Galena MD', 'Crumpton MD',
+  'Cecilton MD', 'Rising Sun MD', 'Port Deposit MD', 'Conowingo MD', 'Fruitland MD',
+  'Delmar MD', 'Pocomoke City MD', 'Snow Hill MD', 'Princess Anne MD', 'Crisfield MD',
+  'Deal Island MD',
+];
+
 // Markets double as the municipality whitelist; `extra` adds neighbourhoods and
 // smaller towns that appear in addresses but are not worth querying separately.
 const placeSet = (markets, extra = []) =>
@@ -1806,6 +1918,88 @@ export const STATES = {
       'sportsplex Virginia',
       'Virginia YMCA gymnasium court rental',
       'indoor basketball facility Virginia list',
+    ],
+  },
+  MA: {
+    code: 'MA',
+    name: 'Massachusetts',
+    stateRe: /(?:MA|Massachusetts|Mass\.?)/,
+    // Massachusetts ZIPs run 01001-02791.
+    zipRe: /\b(?:MA|Massachusetts)\s+0[12]\d{3}\b/,
+    zipBare: /^0[12]\d{3}$/,
+    areaCodes: /\(?(339|351|413|508|617|774|781|857|978)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\b(?:Greater Boston|Western|Central) Massachusetts\b|\bMassachusetts\b/i,
+    markets: MA_MARKETS,
+    places: placeSet(MA_MARKETS, [
+      'back bay', 'beacon hill', 'south end boston', 'north end boston', 'south boston',
+      'east boston', 'charlestown', 'jamaica plain', 'roxbury', 'dorchester', 'mattapan',
+      'hyde park boston', 'roslindale', 'west roxbury', 'allston', 'brighton',
+      'fenway', 'mission hill', 'chestnut hill', 'newton centre', 'newton highlands',
+      'newtonville', 'auburndale', 'waban', 'nonantum', 'west newton',
+      'davis square', 'union square somerville', 'porter square', 'ball square',
+      'north cambridge', 'central square cambridge', 'harvard square', 'inman square',
+      'kendall square', 'east cambridge', 'west cambridge',
+      'linden', 'edgeworth', 'oak grove', 'wellington',
+      'centerville ma', 'hyannis', 'osterville', 'cotuit', 'marstons mills',
+      'west yarmouth', 'south yarmouth', 'yarmouth port', 'west dennis', 'dennis port',
+      'south chatham', 'north chatham', 'north eastham', 'north truro', 'east falmouth',
+      'woods hole', 'falmouth heights', 'buzzards bay', 'monument beach', 'onset',
+      'east sandwich', 'forestdale', 'popponesset',
+      'ward eight worcester', 'quinsigamond village', 'burncoat',
+    ]),
+    gov: GOV('MA'),
+    statewide: [
+      'indoor pickleball facilities Massachusetts directory',
+      'USTA New England indoor tennis facilities Massachusetts',
+      'indoor sports complex Massachusetts list',
+      'Massachusetts volleyball clubs indoor facility list',
+      'Massachusetts squash clubs list',
+      'indoor padel clubs Massachusetts',
+      'best indoor pickleball courts Boston',
+      'sportsplex Massachusetts',
+      'Massachusetts YMCA gymnasium court rental',
+      'indoor basketball facility Massachusetts list',
+      'platform tennis clubs Massachusetts',
+    ],
+  },
+  MD: {
+    code: 'MD',
+    name: 'Maryland',
+    stateRe: /(?:MD|Maryland)/,
+    // Maryland ZIPs run roughly 20601-21930 (the low end shared with DC's own
+    // 200xx-207xx block, and with Northern Virginia's 201xx carve-out).
+    zipRe: /\b(?:MD|Maryland)\s+2[01]\d{3}\b/,
+    zipBare: /^2[01]\d{3}$/,
+    areaCodes: /\(?(227|240|301|410|443|667)\)?[)\s.-]{1,3}\d{3}[\s.-]?\d{4}/,
+    mentionRe: /\bEastern Shore\b|\bMaryland\b/i,
+    markets: MD_MARKETS,
+    places: placeSet(MD_MARKETS, [
+      'canton baltimore', 'fells point', 'federal hill', 'locust point', 'inner harbor',
+      'mount vernon baltimore', 'bolton hill', 'hampden', 'roland park', 'guilford baltimore',
+      'homeland', 'mount washington', 'cross keys', 'charles village', 'remington baltimore',
+      'highlandtown', 'patterson park', 'brooklyn baltimore', 'curtis bay', 'cherry hill baltimore',
+      'lauraville', 'hamilton baltimore', 'northwood baltimore', 'govans', 'waverly baltimore',
+      'downtown silver spring', 'woodside md', 'forest glen', 'kemp mill', 'wheaton-glenmont',
+      'north potomac', 'travilah', 'darnestown', 'dickerson', 'barnesville md',
+      'bowie state', 'kettering md', 'woodmore', 'lake arbor', 'kentland',
+      'seat pleasant', 'fairmount heights', 'capitol heights', 'cheverly',
+      'brentwood md', 'north brentwood', 'mount rainier md', 'edmonston',
+      'oxon hill', 'temple hills', 'marlow heights', 'forestville md',
+      'kettering', 'brock hall', 'westphalia md',
+    ]),
+    gov: GOV('MD'),
+    statewide: [
+      'indoor pickleball facilities Maryland directory',
+      'USTA Mid-Atlantic indoor tennis facilities Maryland',
+      'indoor sports complex Maryland list',
+      'Maryland volleyball clubs indoor facility list',
+      'Maryland squash clubs list',
+      'indoor padel clubs Maryland',
+      'best indoor pickleball courts Baltimore',
+      'best indoor pickleball courts Annapolis',
+      'sportsplex Maryland',
+      'Maryland YMCA gymnasium court rental',
+      'indoor basketball facility Maryland list',
     ],
   },
 };
